@@ -1,0 +1,42 @@
+name: "Go Test"
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: goenvironment
+        run: |
+          echo "GOVERSION=$(go env GOVERSION)" | tee -a "$GITHUB_OUTPUT"
+          echo "GOCACHE=$(go env GOCACHE)" | tee -a "$GITHUB_OUTPUT"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" | tee -a "$GITHUB_OUTPUT"
+      - name: Load GOMODCACHE
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.goenvironment.outputs.GOMODCACHE }}
+          key: ${{ runner.os }}-custom-go-mod-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-custom-go-mod-${{ steps.goenvironment.outputs.GOVERSION }}-
+      - name: Load GOCACHE
+        id: loadgocaches
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.goenvironment.outputs.GOCACHE }}
+          key: ${{ runner.os }}-custom-go-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-custom-go-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}-
+      - name: Test
+        run: go test -short -count=1 ./...

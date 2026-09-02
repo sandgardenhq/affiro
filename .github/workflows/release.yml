@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    # The whole 6-way build matrix (linux/darwin/windows x amd64/arm64) runs
+    # on this one runner. Only darwin needs cgo (AppKit/Metal linking, no
+    # pure-Go fallback), so it's the only target that needs to run on its
+    # native OS — and since linux/windows cross-compile cleanly with cgo off
+    # from a macOS host too, one macos-latest runner covers all six targets
+    # without splitting the build across jobs.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

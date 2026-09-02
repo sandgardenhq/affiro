@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+  merge_group:
+
+jobs:
+  go-lint:
+    uses: ./.github/workflows/go-lint.yml
+
+  go-tests:
+    uses: ./.github/workflows/go-tests.yml
+
+  tests:
+    needs: [go-tests, go-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All tests passed
+        run: echo "All tests passed successfully!"

@@ -1,0 +1,61 @@
+name: "Go Lint"
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: goenvironment
+        run: |
+          echo "GOVERSION=$(go env GOVERSION)" | tee -a "$GITHUB_OUTPUT"
+          echo "GOCACHE=$(go env GOCACHE)" | tee -a "$GITHUB_OUTPUT"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" | tee -a "$GITHUB_OUTPUT"
+          echo "GOLINTCACHE=$HOME/.cache/golangci-lint" | tee -a "$GITHUB_OUTPUT"
+      - name: Load GOMODCACHE
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.goenvironment.outputs.GOMODCACHE }}
+          key: ${{ runner.os }}-custom-go-mod-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-custom-go-mod-${{ steps.goenvironment.outputs.GOVERSION }}-
+      - name: Load GOCACHE
+        id: loadgocaches
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.goenvironment.outputs.GOCACHE }}
+          key: ${{ runner.os }}-custom-go-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-custom-go-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}-
+      - name: Prune stale files from GOCACHE
+        uses: gacts/run-and-post-run@v1
+        with:
+          post: |
+            find "${{ steps.goenvironment.outputs.GOCACHE }}" -type f -newerat 1970-01-01T00:00:00 ! -newerat 1970-01-01T00:00:01 -delete -print
+      - name: Listing stale files in GOCACHE
+        run: find '.' -not -path '**/.git/**' -type f,d -print0 | xargs -0 touch -d '1970-01-01T00:00:00'
+      - name: Prepare golangci-lint cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.goenvironment.outputs.GOLINTCACHE }}
+          key: ${{ runner.os }}-golint-v2-${{ steps.goenvironment.outputs.GOVERSION }}-${{ hashFiles('go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-golint-v2-${{ steps.goenvironment.outputs.GOVERSION }}-
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          skip-cache: true
+          args: --timeout=3m

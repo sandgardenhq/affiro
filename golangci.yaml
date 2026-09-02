@@ -1,0 +1,107 @@
+version: "2"
+run:
+  go: 1.27.0
+linters:
+  default: none
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader # This linter appears to not find all matches on every run; might be too annoying
+    - containedctx
+    - copyloopvar
+    - cyclop 
+    - dupword
+    - durationcheck
+    - err113 
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive 
+    - exptostd
+    - fatcontext
+    - gocheckcompilerdirectives
+    - goconst 
+    - gocritic 
+    - gosec 
+    - govet
+    - ineffassign
+    - intrange
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - mnd 
+    - modernize
+    - nilnesserr
+    - nilnil
+    - nosprintfhostport
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tparallel
+    - unconvert
+    - unparam
+    - unqueryvet
+    - unused
+    - usestdlibvars
+    - usetesting
+    - varnamelen
+    - whitespace
+    - wrapcheck 
+  settings:
+    staticcheck:
+      checks: ["all", "-ST1016"] # Nice to have, but annoying
+    errcheck:
+      exclude-functions:
+        - crypto/rand.Read
+        - fmt.Fprintf
+        - fmt.Fprintln
+    govet:
+      enable-all: true 
+    mnd:
+      ignored-files:
+        - '.*test.*\.go$'
+      ignored-functions:
+        - "context.WithTimeout"
+        - "os.WriteFile"
+        - "os.Chmod"
+    prealloc:
+      for-loops: true
+    revive:
+      confidence: 0.6
+      rules:
+        - name: argument-limit
+          severity: warning
+          disabled: false
+          exclude: [""]
+          arguments: [5]
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: (QF1003|QF1008|QF1006)
+      - linters:
+          - revive
+        path: (.+)_test.go
+        text: ^(unused-parameter|add-constant)
+formatters:
+  enable:
+    - gofmt
+    - goimports

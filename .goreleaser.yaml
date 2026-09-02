@@ -1,0 +1,61 @@
+version: 2
+
+project_name: affiro
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: affiro
+    main: ./cmd/affiro
+    binary: affiro
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Only darwin's GUI backend (oak's mtldriver) links AppKit/Metal via cgo
+    # with no pure-Go fallback. linux and windows cross-compile cleanly with
+    # cgo off from any host, including the macos-latest runner this whole
+    # matrix builds on — see .github/workflows/release.yml for why one
+    # runner is enough for all six platform/arch combinations. Windows'
+    # keystroke-capture DLL is a separate, already-prebuilt go:embed'd
+    # artifact (asig/keylog/internal/windriver/dllmain/keylog.dll) and
+    # needs no build step here.
+    env:
+      - CGO_ENABLED={{ if eq .Os "darwin" }}1{{ else }}0{{ end }}
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/sandgardenhq/affiro/internal/buildinfo.CommitSHA={{ .ShortCommit }}
+      - -X github.com/sandgardenhq/affiro/internal/buildinfo.Time={{ .Date }}
+      - -X github.com/sandgardenhq/affiro/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/sandgardenhq/affiro/internal/buildinfo.Asset=affiro
+
+archives:
+  - id: affiro
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: sandgardenhq
+    name: affiro
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
