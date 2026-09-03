@@ -1,0 +1,11 @@
+# Grants the active login session's user dynamic ACL access to keyboard event nodes.
+# The same "uaccess" mechanism systemd-udev already uses for joysticks (see /usr/lib/udev/rules.d/70-uaccess.rules),
+# extended here to keyboards.
+#
+# This is needed because affiro's `monitor` command reads raw keyboard input directly under Wayland, where no portal API
+# can deliver a stream of ordinary keystrokes.
+# Keyboard event nodes are deliberately excluded from udev's built-in uaccess rule, since ordinary unprivileged
+# keylogging is exactly what that exclusion guards against.
+# Installing this rule is an explicit, informed opt-in to that access for affiro.
+
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", TAG+="uaccess"
