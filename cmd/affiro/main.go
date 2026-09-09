@@ -106,15 +106,21 @@ const helpText = `affiro CLI
 
 usage: affiro [-gui]`
 
+// apiBaseURL returns the playground API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
+// point at a local playground server), otherwise defaultAPIBaseURL.
+func apiBaseURL() string {
+	if baseURL := os.Getenv("AFFIRO_API_BASE_URL"); baseURL != "" {
+		return baseURL
+	}
+	return defaultAPIBaseURL
+}
+
 // checkForUpdate reports whether a newer affiro build is published and, if so, applies it to
 // the currently running executable in place. Any failure (network, API, or apply) prints a
 // message and returns rather than crashing, so -version stays usable when the playground API is
 // unreachable.
 func checkForUpdate() {
-	baseURL := os.Getenv("AFFIRO_API_BASE_URL")
-	if baseURL == "" {
-		baseURL = defaultAPIBaseURL
-	}
+	baseURL := apiBaseURL()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -169,7 +175,7 @@ func run() error {
 		return nil
 	}
 	fmt.Println(`backslash ('\') to copy`)
-	st, err := state.New(context.Background(), *storageDir, time.Hour, "http://127.0.0.1:10380") // TODO: parameterize host
+	st, err := state.New(context.Background(), *storageDir, time.Hour, apiBaseURL())
 	if err != nil {
 		return err
 	}
