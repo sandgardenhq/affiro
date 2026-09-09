@@ -100,7 +100,7 @@ func main() {
 
 var fullVersion = "affiro " + buildinfo.Version
 
-const defaultAPIBaseURL = "https://app.lifesign.sandgarden.com"
+const defaultAPIBaseURL = "https://app.affiro.com"
 
 const helpText = `affiro CLI
 
