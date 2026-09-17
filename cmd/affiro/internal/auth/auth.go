@@ -17,14 +17,14 @@ func Authenticate(ctx context.Context, host string) (string, error) {
 	clientSlug := random.String(64)
 	err := browser.OpenURL(host + "/api/v1/auth/initiate?client-slug=" + clientSlug)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("opening a browser to start authentication: %w", err)
 	}
 	cl2 := &http.Client{
 		Timeout: 5 * time.Minute,
 	}
 	resp, err := cl2.Get(host + "/api/v1/auth/claim?client-slug=" + clientSlug)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("waiting for the authentication to be claimed: %w", err)
 	}
 	defer func() {
 		_, err = io.Copy(io.Discard, resp.Body)

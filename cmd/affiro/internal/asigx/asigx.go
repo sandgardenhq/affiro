@@ -2,6 +2,7 @@ package asigx
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,7 +42,10 @@ func (a *Asig) Write(ev asig.Event) error {
 		}
 	}
 	a.TotalActions++
-	return a.Asig.Write(ev)
+	if err := a.Asig.Write(ev); err != nil {
+		return fmt.Errorf("writing the event to the signature: %w", err)
+	}
+	return nil
 }
 
 func (a *Asig) String() string {
@@ -65,7 +69,7 @@ func ParseString(s string) (*Asig, error) {
 	}
 	as, err := asig.ParseString(sSplit[0])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing the signature line: %w", err)
 	}
 	if len(sSplit) == 1 {
 		return &Asig{
@@ -81,7 +85,7 @@ func ParseString(s string) (*Asig, error) {
 	}
 	actions, err := strconv.Atoi(sSplit[2])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing the total action count: %w", err)
 	}
 	return &Asig{
 		Asig:            as,

@@ -93,10 +93,10 @@ func (s *State) Refresh() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.cur.Seek(0, io.SeekStart); err != nil {
-		return err
+		return fmt.Errorf("rewinding the signature file: %w", err)
 	}
 	if _, err := s.cur.Write([]byte(content)); err != nil {
-		return err
+		return fmt.Errorf("writing the signature file: %w", err)
 	}
 	return nil
 }
@@ -104,13 +104,13 @@ func (s *State) Refresh() error {
 func (s *State) ListRecent(limit int) ([]*asigx.Asig, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing the signature directory: %w", err)
 	}
 	out := make([]*asigx.Asig, 0, len(entries))
 	for _, entry := range entries {
 		f, err := os.ReadFile(filepath.Join(s.dir, entry.Name()))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading %s: %w", entry.Name(), err)
 		}
 		ls, err := asigx.ParseString(string(f))
 		if err != nil {
@@ -132,7 +132,11 @@ func (s *State) String() string {
 }
 
 func (s *State) QRCode() (image.Image, error) {
-	return s.sig.QRCode()
+	img, err := s.sig.QRCode()
+	if err != nil {
+		return nil, fmt.Errorf("rendering the current signature as a QR code: %w", err)
+	}
+	return img, nil
 }
 
 func (s *State) Write(ev asig.Event) error {
@@ -149,7 +153,10 @@ func (s *State) Write(ev asig.Event) error {
 	}
 	s.lastEventAt = time.Now()
 	s.mu.Unlock()
-	return s.sig.Write(ev)
+	if err := s.sig.Write(ev); err != nil {
+		return fmt.Errorf("recording the event: %w", err)
+	}
+	return nil
 }
 
 func (s *State) MustWrite(ev asig.Event) {

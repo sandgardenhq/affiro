@@ -152,5 +152,9 @@ func resolveTargetPath(targetPath string) (string, error) {
 	if targetPath != "" {
 		return targetPath, nil
 	}
-	return selfupdate.ExecutableRealPath()
+	path, err := selfupdate.ExecutableRealPath()
+	if err != nil {
+		return "", fmt.Errorf("resolving the running executable: %w", err)
+	}
+	return path, nil
 }

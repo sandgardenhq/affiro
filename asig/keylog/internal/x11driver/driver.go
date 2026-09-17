@@ -84,7 +84,7 @@ func StartKeyMonitor() error {
 	// This means: all keypress events for the whole x11 server now go through us.
 	err = keybind.GrabKeyboard(xconn, xconn.RootWin())
 	if err != nil {
-		return err
+		return fmt.Errorf("grabbing the X11 keyboard: %w", err)
 	}
 
 	// TODO: mousebinding breaks focus events i.e. the window in focus will always be the last window in focus, and focus can't change

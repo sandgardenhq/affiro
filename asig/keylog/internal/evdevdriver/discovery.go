@@ -57,7 +57,7 @@ func watchHotplug(ctx context.Context, dir string, onAdd, onRemove func(name str
 
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return fmt.Errorf("watching for keyboard hotplug: %w", ctx.Err())
 		}
 
 		n, err := unix.Poll(pollFds, pollTimeoutMillis)

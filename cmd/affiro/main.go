@@ -163,16 +163,16 @@ func run() error {
 	showHelp := flagSet.Bool("help", false, "print help text and exit")
 	err := flagSet.Parse(os.Args[1:])
 	if err != nil {
-		return err
+		return fmt.Errorf("parsing the command line: %w", err)
 	}
 	if *storageDir == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			return err
+			return fmt.Errorf("locating the home directory: %w", err)
 		}
 		*storageDir = filepath.Join(homeDir, ".affiro")
 		if err := os.MkdirAll(*storageDir, 0777); err != nil {
-			return err
+			return fmt.Errorf("creating %s: %w", *storageDir, err)
 		}
 	}
 	if *showHelp {
@@ -188,7 +188,7 @@ func run() error {
 	fmt.Println(`backslash ('\') to copy`)
 	st, err := state.New(context.Background(), *storageDir, time.Hour, apiBaseURL())
 	if err != nil {
-		return err
+		return fmt.Errorf("opening the signature store: %w", err)
 	}
 	const storageFlushRate = 30 * time.Second // TODO: make user configurable
 	go func() {
@@ -235,7 +235,7 @@ func run() error {
 	// todo: make this killable
 	mon, err := keylog.Start()
 	if err != nil {
-		return err
+		return fmt.Errorf("starting the keyboard monitor: %w", err)
 	}
 	keyMonitor.set(mon)
 	select {}
@@ -267,7 +267,7 @@ func guiMonitor(st *state.State) error {
 		},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("adding the init scene: %w", err)
 	}
 	err = oak.AddScene(homeSceneName, scene.Scene{
 		Start: func(ctx *scene.Context) {
@@ -311,9 +311,9 @@ func guiMonitor(st *state.State) error {
 		},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("adding the %s scene: %w", homeSceneName, err)
 	}
-	return oak.Init("init", func(c oak.Config) (oak.Config, error) {
+	err = oak.Init("init", func(c oak.Config) (oak.Config, error) {
 		c.TopMost = true
 		c.Screen.Width = windowWidth
 		c.Screen.Height = homeWindowHeight
@@ -324,6 +324,10 @@ func guiMonitor(st *state.State) error {
 		// TODO: make the oak window a topnav app icon thing on osx; this was done before so we just need to remember how to do it
 		return c, nil
 	})
+	if err != nil {
+		return fmt.Errorf("starting the window: %w", err)
+	}
+	return nil
 }
 
 func wideCutRound(darkMode bool) mod.Mod {

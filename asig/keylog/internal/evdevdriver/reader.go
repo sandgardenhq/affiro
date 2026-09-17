@@ -4,6 +4,7 @@ package evdevdriver
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/sandgardenhq/affiro/asig"
@@ -72,7 +73,7 @@ func readEvents(r io.Reader, mods *modifierState, emit func(asig.Event)) error {
 	var raw [inputEventSize]byte
 	for {
 		if _, err := io.ReadFull(r, raw[:]); err != nil {
-			return err
+			return fmt.Errorf("reading an input event: %w", err)
 		}
 
 		evType, code, value := parseInputEvent(raw)
