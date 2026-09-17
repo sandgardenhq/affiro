@@ -5,6 +5,7 @@ package cliupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,9 @@ import (
 	"github.com/fynelabs/selfupdate"
 	"github.com/sandgardenhq/affiro/internal/releaseassets"
 )
+
+// ErrUnexpectedStatus means the update API answered with something other than 200.
+var ErrUnexpectedStatus = errors.New("unexpected response status")
 
 // CheckResult mirrors the playground API's CLIVersionCheckResponse shape.
 type CheckResult struct {
@@ -52,7 +56,7 @@ func Check(ctx context.Context, client *http.Client, baseURL, currentVersion str
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return CheckResult{}, fmt.Errorf("version-check request failed with status %d", resp.StatusCode)
+		return CheckResult{}, fmt.Errorf("version check: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 	var result CheckResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -79,7 +83,7 @@ func Download(ctx context.Context, client *http.Client, baseURL, downloadPath, d
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download request failed with status %d", resp.StatusCode)
+		return "", fmt.Errorf("download: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
@@ -125,7 +129,7 @@ func Apply(ctx context.Context, client *http.Client, baseURL, downloadPath, targ
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download request failed with status %d", resp.StatusCode)
+		return fmt.Errorf("download: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	opts := selfupdate.Options{TargetPath: targetPath}

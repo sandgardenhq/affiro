@@ -9,9 +9,12 @@ import (
 	"golang.org/x/mobile/event/key"
 )
 
+// errBase stands in for whatever error the encoding layer was handed.
+var errBase = errors.New("err")
+
 func TestErrorTypes(t *testing.T) {
 	t.Parallel()
-	base := errors.New("err")
+	base := errBase
 	errs := []error{
 		BadVersionError{Err: base},
 		BadStartError{Err: base},

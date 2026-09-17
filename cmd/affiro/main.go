@@ -113,6 +113,9 @@ const (
 
 const defaultAPIBaseURL = "https://app.affiro.com"
 
+// errHelp is returned when there is no argv at all to read a subcommand from.
+var errHelp = errors.New(helpText)
+
 const helpText = `affiro CLI
 
 usage: affiro [-gui]`
@@ -154,7 +157,7 @@ func checkForUpdate() {
 
 func run() error {
 	if len(os.Args) == 0 {
-		return errors.New(helpText)
+		return errHelp
 	}
 	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
 	guiMode := flagSet.Bool("gui", false, "run in gui mode")

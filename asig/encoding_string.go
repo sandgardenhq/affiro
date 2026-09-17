@@ -27,6 +27,9 @@ func (l *Asig) String() string {
 
 var ErrInsufficientDividerBytes = errors.New("insufficient divider bytes in string signature")
 
+// ErrInsufficientStartBytes is reported when the start-second field decodes to the wrong width.
+var ErrInsufficientStartBytes = errors.New("insufficient bytes")
+
 type BadVersionError struct {
 	Err error
 }
@@ -77,7 +80,7 @@ func ParseString(s string) (*Asig, error) {
 		return nil, BadStartError{Err: err}
 	}
 	if len(secBytes) != 8 {
-		return nil, BadStartError{Err: errors.New("insufficient bytes")}
+		return nil, BadStartError{Err: ErrInsufficientStartBytes}
 	}
 	//nolint:gosec // the other half of the round trip String writes
 	startSecond := int64(binary.LittleEndian.Uint64(secBytes))

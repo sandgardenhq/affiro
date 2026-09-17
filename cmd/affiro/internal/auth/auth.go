@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 	"github.com/pkg/browser"
 	"github.com/sandgardenhq/affiro/internal/random"
 )
+
+// ErrClaimNotCompleted means the website never confirmed the login this CLI started.
+var ErrClaimNotCompleted = errors.New("auth claim never completed")
 
 func Authenticate(ctx context.Context, host string) (string, error) {
 	// TODO: endpoint / model definitions in a place clients can get them
@@ -37,7 +41,7 @@ func Authenticate(ctx context.Context, host string) (string, error) {
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth claim never completed: %v", resp.StatusCode)
+		return "", fmt.Errorf("%w: status %d", ErrClaimNotCompleted, resp.StatusCode)
 	}
 	type authCompleteResponse struct {
 		JWT string `json:"token"`
