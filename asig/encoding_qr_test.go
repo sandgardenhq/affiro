@@ -10,8 +10,8 @@ import (
 func TestQREncoding(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
-		name string
 		sig  *Asig
+		name string
 	}
 	tcs := []testCase{
 		{

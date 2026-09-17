@@ -1,7 +1,6 @@
 package oakx
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"io/fs"
@@ -42,22 +41,28 @@ func NewFilledCircle(c color.Color, radius, thickness float64, offsets ...float6
 
 // This is notably smoother than render.DrawCircle
 func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
-	sp := render.NewEmptySprite(0, 0, int(r)*2+1, int(r)*2+1)
+	sp := render.NewEmptySprite(0, 0, r*2+1, r*2+1)
 	rgba := sp.GetRGBA()
 	if r < 0 {
 		return sp
 	}
-	cx := x + r
 	cy := y + r
-	x = cx
-	y = cy
-	// Bresenham algorithm
+	// drawCircleOutline hands back the Bresenham error term, not the radius, and the fill
+	// has always taken its bound from that.
+	bound := drawCircleOutline(rgba, x+r, cy, r, c)
+	fillCircleOutline(rgba, bound, cy, c)
+	return sp
+}
+
+// drawCircleOutline walks the Bresenham circle of radius r about (cx, cy), returning the
+// error term it finished on.
+func drawCircleOutline(rgba *image.RGBA, cx, cy, r int, c color.Color) int {
 	x1, y1, err := -r, 0, 2-2*r
 	for {
-		rgba.Set(x-x1, y+y1, c)
-		rgba.Set(x-y1, y-x1, c)
-		rgba.Set(x+x1, y-y1, c)
-		rgba.Set(x+y1, y+x1, c)
+		rgba.Set(cx-x1, cy+y1, c)
+		rgba.Set(cx-y1, cy-x1, c)
+		rgba.Set(cx+x1, cy-y1, c)
+		rgba.Set(cx+y1, cy+x1, c)
 		r = err
 		if r > x1 {
 			x1++
@@ -68,63 +73,29 @@ func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
 			err += y1*2 + 1
 		}
 		if x1 >= 0 {
-			break
+			return r
 		}
 	}
-	// fill
-	for x2 := 0; x2 < (r*2)+1; x2++ {
+}
+
+// fillCircleOutline colours each column between the top and bottom of an already-drawn
+// outline.
+func fillCircleOutline(rgba *image.RGBA, bound, cy int, c color.Color) {
+	for x2 := range (bound * 2) + 1 {
 		drawingCol := false
-		for y2 := 0; y2 < (r*2)+1; y2++ {
+		for y2 := range (bound * 2) + 1 {
 			if !drawingCol {
 				// hit the top of the outline
 				if rgba.RGBAAt(x2, y2) == c {
 					drawingCol = true
 				}
-			} else {
-				// hit the bottom of the outline
-				if y2 > cy && rgba.RGBAAt(x2, y2) == c {
-					break
-				}
-				rgba.Set(x2, y2, c)
+				continue
 			}
-		}
-	}
-	return sp
-}
-
-func InvertColors(rgba *image.RGBA) {
-	bounds := rgba.Bounds()
-	w := bounds.Max.X
-	h := bounds.Max.Y
-	for x := range w {
-		for y := range h {
-			r, g, b, a := rgba.At(x, y).RGBA()
-			midPoint := uint32(0xffff >> 1)
-			fmt.Print("in: ", r, g, b, a, midPoint, "  ")
-			if r < midPoint {
-				r += 2 * (midPoint - r)
-			} else {
-				r -= 2 * (r - midPoint)
+			// hit the bottom of the outline
+			if y2 > cy && rgba.RGBAAt(x2, y2) == c {
+				break
 			}
-			if g < midPoint {
-				g += 2 * (midPoint - g)
-			} else {
-				g -= 2 * (g - midPoint)
-			}
-			if b < midPoint {
-				b += 2 * (midPoint - b)
-			} else {
-				b -= 2 * (b - midPoint)
-			}
-			// a is unchanged
-			newRGBA := color.RGBA64{
-				uint16(r),
-				uint16(g),
-				uint16(b),
-				uint16(a),
-			}
-			fmt.Println("out: ", r, g, b, a)
-			rgba.Set(x, y, newRGBA)
+			rgba.Set(x2, y2, c)
 		}
 	}
 }

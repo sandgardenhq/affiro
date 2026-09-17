@@ -2,8 +2,6 @@ package asig
 
 import (
 	"time"
-
-	"golang.org/x/mobile/event/key"
 )
 
 func (l *Asig) writeV1(ev Event) {
@@ -20,21 +18,9 @@ func (l *Asig) writeV1(ev Event) {
 		}
 		l.CurrentSecond = now
 	}
-	b := l.Data[len(l.Data)-1]
-	switch v := ev.(type) {
-	case KeyDownEvent:
-		if (v.SpecialPressed || v.ControlPressed) && v.Key == key.CodeV {
-			b |= pastedBit
-		} else if b != 127 && b != 255 {
-			b += 1
-		}
-	case MouseUpEvent:
-		if b != 127 && b != 126 && b != 255 && b != 254 {
-			b += 2
-		}
-	}
-	// If nowIndex == currentIndex, this will be an existing byte with ~some data already
-	l.Data[len(l.Data)-1] = b
+	// If nowIndex == currentIndex, this is an existing byte with ~some data already
+	last := len(l.Data) - 1
+	l.Data[last] = applyEvent(l.Data[last], ev)
 }
 
 // Version 1:

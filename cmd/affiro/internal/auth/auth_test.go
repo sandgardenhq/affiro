@@ -3,6 +3,7 @@ package auth
 import "testing"
 
 func TestAuthenticateLong(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip()
 	}

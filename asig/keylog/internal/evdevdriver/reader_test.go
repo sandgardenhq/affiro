@@ -89,10 +89,13 @@ func TestReadEvents_UnknownKeycodeIgnored(t *testing.T) {
 	}
 }
 
+// errBoom stands in for whatever the underlying reader failed with.
+var errBoom = errors.New("boom")
+
 func TestReadEvents_PropagatesReadError(t *testing.T) {
 	t.Parallel()
 
-	wantErr := errors.New("boom")
+	wantErr := errBoom
 	var mods modifierState
 	err := readEvents(iotest.ErrReader(wantErr), &mods, func(asig.Event) {})
 	if !errors.Is(err, wantErr) {

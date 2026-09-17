@@ -15,11 +15,11 @@ const (
 )
 
 type Asig struct {
-	mu            sync.Mutex
 	Data          []byte // 1 byte per 5 seconds
 	Version       Version
 	StartSecond   int64
 	CurrentSecond int64
+	mu            sync.Mutex
 }
 
 func New() *Asig {

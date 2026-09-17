@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,19 +13,22 @@ import (
 	"github.com/sandgardenhq/affiro/internal/random"
 )
 
+// ErrClaimNotCompleted means the website never confirmed the login this CLI started.
+var ErrClaimNotCompleted = errors.New("auth claim never completed")
+
 func Authenticate(ctx context.Context, host string) (string, error) {
 	// TODO: endpoint / model definitions in a place clients can get them
 	clientSlug := random.String(64)
 	err := browser.OpenURL(host + "/api/v1/auth/initiate?client-slug=" + clientSlug)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("opening a browser to start authentication: %w", err)
 	}
 	cl2 := &http.Client{
 		Timeout: 5 * time.Minute,
 	}
 	resp, err := cl2.Get(host + "/api/v1/auth/claim?client-slug=" + clientSlug)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("waiting for the authentication to be claimed: %w", err)
 	}
 	defer func() {
 		_, err = io.Copy(io.Discard, resp.Body)
@@ -37,7 +41,7 @@ func Authenticate(ctx context.Context, host string) (string, error) {
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth claim never completed: %v", resp.StatusCode)
+		return "", fmt.Errorf("%w: status %d", ErrClaimNotCompleted, resp.StatusCode)
 	}
 	type authCompleteResponse struct {
 		JWT string `json:"token"`

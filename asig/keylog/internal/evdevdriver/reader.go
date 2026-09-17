@@ -4,6 +4,7 @@ package evdevdriver
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/sandgardenhq/affiro/asig"
@@ -31,6 +32,7 @@ const (
 func parseInputEvent(raw [inputEventSize]byte) (evType, code uint16, value int32) {
 	evType = binary.NativeEndian.Uint16(raw[16:18])
 	code = binary.NativeEndian.Uint16(raw[18:20])
+	//nolint:gosec // input_event.value is a signed 32-bit field; this reinterprets its bytes, it does not narrow
 	value = int32(binary.NativeEndian.Uint32(raw[20:24]))
 	return evType, code, value
 }
@@ -72,7 +74,7 @@ func readEvents(r io.Reader, mods *modifierState, emit func(asig.Event)) error {
 	var raw [inputEventSize]byte
 	for {
 		if _, err := io.ReadFull(r, raw[:]); err != nil {
-			return err
+			return fmt.Errorf("reading an input event: %w", err)
 		}
 
 		evType, code, value := parseInputEvent(raw)

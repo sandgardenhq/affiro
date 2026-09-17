@@ -3,44 +3,47 @@
 // and the serve path (cmd/playground) can never disagree on a key layout.
 package releaseassets
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // CLIFileName is the S3 "file name" prefix used for the affiro CLI binary, shared
 // between cmd/playground-release's mainPaths entry and the download-proxy logic.
 const CLIFileName = "affiro"
 
+// The GOOS and GOARCH values this scheme covers.
+const (
+	OSLinux   = "linux"
+	OSDarwin  = "darwin"
+	OSWindows = "windows"
+
+	ArchAMD64 = "amd64"
+	ArchARM64 = "arm64"
+)
+
 // KnownOSes are the only GOOS values ever accepted from a caller or used to build an S3 key.
-var KnownOSes = []string{"linux", "darwin", "windows"}
+var KnownOSes = []string{OSLinux, OSDarwin, OSWindows}
 
 // KnownArches are the only GOARCH values ever accepted from a caller or used to build an S3 key.
-var KnownArches = []string{"amd64", "arm64"}
+var KnownArches = []string{ArchAMD64, ArchARM64}
 
 // IsKnownOS reports whether goos is one of KnownOSes.
 func IsKnownOS(goos string) bool {
-	for _, known := range KnownOSes {
-		if goos == known {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(KnownOSes, goos)
 }
 
 // IsKnownArch reports whether goarch is one of KnownArches.
 func IsKnownArch(goarch string) bool {
-	for _, known := range KnownArches {
-		if goarch == known {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(KnownArches, goarch)
 }
 
 // S3OSName maps a Go GOOS value to the name used in S3 object keys.
 func S3OSName(goos string) string {
 	switch goos {
-	case "windows":
+	case OSWindows:
 		return "win"
-	case "darwin":
+	case OSDarwin:
 		return "osx"
 	default:
 		return goos
@@ -51,7 +54,7 @@ func S3OSName(goos string) string {
 // e.g. BuildName("affiro", "darwin", "arm64") -> "affiro_osx_arm64".
 func BuildName(fileName, goos, goarch string) string {
 	name := fmt.Sprintf("%s_%s_%s", fileName, S3OSName(goos), goarch)
-	if goos == "windows" {
+	if goos == OSWindows {
 		name += ".exe"
 	}
 	return name

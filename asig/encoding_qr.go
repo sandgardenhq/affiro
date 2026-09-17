@@ -18,13 +18,13 @@ func (l *Asig) QRCode() (image.Image, error) {
 	// ascii or similar character range.
 	qr, err := qrcode.New(l.String())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("building a QR code from the signature: %w", err)
 	}
 
 	w := &qrimage.Writer{}
 	err = qr.Save(w)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("rendering the QR code to an image: %w", err)
 	}
 	return w.Image(), nil
 }

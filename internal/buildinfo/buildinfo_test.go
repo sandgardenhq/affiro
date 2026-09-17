@@ -2,6 +2,7 @@ package buildinfo
 
 import "testing"
 
+//nolint:paralleltest // assigns the package-level Version, so it cannot share the package with a parallel test
 func Test(t *testing.T) {
 	v := FullVersion()
 	expect := Asset + " " + Version + "-" + Time + "-" + CommitSHA

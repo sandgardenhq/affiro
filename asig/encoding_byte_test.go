@@ -9,10 +9,10 @@ import (
 func TestParseBytes(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
-		name   string
-		data   []byte
 		expect *Asig
 		check  func(t testing.TB, err error)
+		name   string
+		data   []byte
 	}
 	tcs := []testCase{
 		{
@@ -66,8 +66,8 @@ func TestParseBytes(t *testing.T) {
 func TestBytesEncoding(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
-		name string
 		sig  *Asig
+		name string
 	}
 	tcs := []testCase{
 		{

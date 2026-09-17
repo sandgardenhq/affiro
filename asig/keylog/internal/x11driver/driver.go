@@ -3,6 +3,7 @@
 package x11driver
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -14,6 +15,10 @@ import (
 	"github.com/sandgardenhq/affiro/asig/keylog/internal/x11driver/x11key"
 	"golang.org/x/mobile/event/key"
 )
+
+// errTooFewKeysyms means the X server reported a keyboard mapping this driver cannot read
+// a shifted and unshifted symbol out of.
+var errTooFewKeysyms = errors.New("too few keysyms per keycode")
 
 // in x11 you have two options for how to respond to key events: you can grab the entire keyboard, or you can grab just some keys.
 // it's a little more dangerous to grab the whole keyboard, but also far less intrusive (far fewer bindings).
@@ -36,7 +41,7 @@ func StartKeyMonitor() error {
 	}
 	n := int(km.KeysymsPerKeycode)
 	if n < 2 {
-		return fmt.Errorf("too few keysyms per keycode found: %d", n)
+		return fmt.Errorf("%w: found %d", errTooFewKeysyms, n)
 	}
 	for i := keyLo; i <= keyHi; i++ {
 		keysyms[i][0] = uint32(km.Keysyms[(i-keyLo)*n+0])
@@ -84,7 +89,7 @@ func StartKeyMonitor() error {
 	// This means: all keypress events for the whole x11 server now go through us.
 	err = keybind.GrabKeyboard(xconn, xconn.RootWin())
 	if err != nil {
-		return err
+		return fmt.Errorf("grabbing the X11 keyboard: %w", err)
 	}
 
 	// TODO: mousebinding breaks focus events i.e. the window in focus will always be the last window in focus, and focus can't change

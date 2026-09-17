@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -13,9 +12,10 @@ var stringSigDivider byte = '.'
 
 func (l *Asig) String() string {
 	sb := strings.Builder{}
-	sb.WriteString(strconv.FormatInt(int64(l.Version), 10))
+	sb.WriteString(strconv.FormatUint(uint64(l.Version), 10))
 	sb.WriteByte(stringSigDivider)
 	secBytes := make([]byte, 8)
+	//nolint:gosec // StartSecond is carried as a two's-complement 64-bit round trip; ParseString reads it back
 	binary.LittleEndian.PutUint64(secBytes, uint64(l.StartSecond))
 	sb.WriteString(base64.RawURLEncoding.EncodeToString(secBytes))
 	sb.WriteByte(stringSigDivider)
@@ -27,12 +27,15 @@ func (l *Asig) String() string {
 
 var ErrInsufficientDividerBytes = errors.New("insufficient divider bytes in string signature")
 
+// ErrInsufficientStartBytes is reported when the start-second field decodes to the wrong width.
+var ErrInsufficientStartBytes = errors.New("insufficient bytes")
+
 type BadVersionError struct {
 	Err error
 }
 
 func (e BadVersionError) Error() string {
-	return fmt.Sprintf("bad version: %s", e.Err.Error())
+	return "bad version: " + e.Err.Error()
 }
 func (e BadVersionError) Unwrap() error {
 	return e.Err
@@ -43,7 +46,7 @@ type BadStartError struct {
 }
 
 func (e BadStartError) Error() string {
-	return fmt.Sprintf("bad start: %s", e.Err.Error())
+	return "bad start: " + e.Err.Error()
 }
 func (e BadStartError) Unwrap() error {
 	return e.Err
@@ -54,7 +57,7 @@ type BadDataError struct {
 }
 
 func (e BadDataError) Error() string {
-	return fmt.Sprintf("bad signature data: %s", e.Err.Error())
+	return "bad signature data: " + e.Err.Error()
 }
 func (e BadDataError) Unwrap() error {
 	return e.Err
@@ -68,7 +71,7 @@ func ParseString(s string) (*Asig, error) {
 	if len(splitSig) < 4 {
 		return nil, ErrInsufficientDividerBytes
 	}
-	version, err := strconv.ParseInt(splitSig[0], 10, 64)
+	version, err := strconv.ParseUint(splitSig[0], 10, 64)
 	if err != nil {
 		return nil, BadVersionError{Err: err}
 	}
@@ -77,8 +80,9 @@ func ParseString(s string) (*Asig, error) {
 		return nil, BadStartError{Err: err}
 	}
 	if len(secBytes) != 8 {
-		return nil, BadStartError{Err: errors.New("insufficient bytes")}
+		return nil, BadStartError{Err: ErrInsufficientStartBytes}
 	}
+	//nolint:gosec // the other half of the round trip String writes
 	startSecond := int64(binary.LittleEndian.Uint64(secBytes))
 	// splitSig-1, not 2, so extra information can be placed here
 	data, err := base64.RawURLEncoding.DecodeString(splitSig[len(splitSig)-1])

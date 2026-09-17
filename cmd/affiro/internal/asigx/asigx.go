@@ -1,6 +1,7 @@
 package asigx
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,11 +12,10 @@ import (
 
 type Asig struct {
 	*asig.Asig
-
-	mu              sync.Mutex
 	FirstCharacters string
 	TotalActions    int
 	CharLimit       int
+	mu              sync.Mutex
 }
 
 func New() *Asig {
@@ -34,42 +34,42 @@ func (a *Asig) Write(ev asig.Event) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.FirstCharacters) < a.CharLimit {
-		switch v := ev.(type) {
-		case asig.KeyDownEvent:
+		if v, ok := ev.(asig.KeyDownEvent); ok {
 			// TODO: we probably shouldn't be emitting x00 strings
 			if v.String != "" && v.String != "\x00" {
 				a.FirstCharacters += v.String
 			}
-			// else {
-			// 	fmt.Println("(debug) no string for input event", v)
-			// }
 		}
 	}
-	// else {
-	// 	fmt.Println("at limit")
-	// }
 	a.TotalActions++
-	return a.Asig.Write(ev)
+	if err := a.Asig.Write(ev); err != nil {
+		return fmt.Errorf("writing the event to the signature: %w", err)
+	}
+	return nil
 }
 
 func (a *Asig) String() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	lines := []string{}
-	lines = append(lines, a.Asig.String())
-	lines = append(lines, a.FirstCharacters)
-	lines = append(lines, strconv.Itoa(a.TotalActions))
+	lines := []string{
+		a.Asig.String(),
+		a.FirstCharacters,
+		strconv.Itoa(a.TotalActions),
+	}
 	return strings.Join(lines, "\n")
 }
+
+// ErrEmptyString is returned when there is nothing at all to parse a signature from.
+var ErrEmptyString = errors.New("empty string")
 
 func ParseString(s string) (*Asig, error) {
 	sSplit := strings.Split(s, "\n")
 	if len(sSplit) == 0 {
-		return nil, fmt.Errorf("empty string")
+		return nil, ErrEmptyString
 	}
 	as, err := asig.ParseString(sSplit[0])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing the signature line: %w", err)
 	}
 	if len(sSplit) == 1 {
 		return &Asig{
@@ -85,7 +85,7 @@ func ParseString(s string) (*Asig, error) {
 	}
 	actions, err := strconv.Atoi(sSplit[2])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing the total action count: %w", err)
 	}
 	return &Asig{
 		Asig:            as,

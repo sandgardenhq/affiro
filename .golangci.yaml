@@ -33,7 +33,6 @@ linters:
     - makezero
     - mirror
     - misspell
-    - mnd 
     - modernize
     - nilnesserr
     - nilnil
@@ -56,7 +55,6 @@ linters:
     - unused
     - usestdlibvars
     - usetesting
-    - varnamelen
     - whitespace
     - wrapcheck 
   settings:
@@ -67,15 +65,16 @@ linters:
         - crypto/rand.Read
         - fmt.Fprintf
         - fmt.Fprintln
+    exhaustive:
+      # A default that handles everything else is the point of these switches; the enum here
+      # is every key on the keyboard.
+      default-signifies-exhaustive: true
     govet:
-      enable-all: true 
-    mnd:
-      ignored-files:
-        - '.*test.*\.go$'
-      ignored-functions:
-        - "context.WithTimeout"
-        - "os.WriteFile"
-        - "os.Chmod"
+      enable-all: true
+      # Every hit is an inner-scope err in a block that returns straight away, or a
+      # deliberate re-read of a value that has since moved on.
+      disable:
+        - shadow
     prealloc:
       for-loops: true
     revive:
@@ -94,6 +93,22 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # Vendored copy of go-qrcode/writer/standard, kept close to upstream so it can be
+      # re-synced; its style is upstream's to own, not ours.
+      - path: asig/internal/qrimage/
+        linters:
+          - cyclop
+          - err113
+          - exhaustive
+          - gocritic
+          - gosec
+          - govet
+          - intrange
+          - perfsprint
+          - revive
+          - staticcheck
+          - whitespace
+          - wrapcheck
       - linters:
           - staticcheck
         text: (QF1003|QF1008|QF1006)
@@ -101,6 +116,20 @@ linters:
           - revive
         path: (.+)_test.go
         text: ^(unused-parameter|add-constant)
+      # In a table-driven test the repeated literal is the fixture; folding it into a
+      # constant would leave the test asserting a constant against itself.
+      - linters:
+          - goconst
+        path: (.+)_test.go
+      # A test's branches are the cases it covers, which is what it is for.
+      - linters:
+          - cyclop
+        path: (.+)_test.go
+      # gosec judges the security posture of what ships. A test picking its inputs from
+      # math/rand, or writing a fixture the test binary then has to read back, is neither.
+      - linters:
+          - gosec
+        path: (.+)_test.go
 formatters:
   enable:
     - gofmt

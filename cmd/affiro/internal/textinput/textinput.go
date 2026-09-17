@@ -17,7 +17,9 @@ import (
 
 // TextInput provides a nicer way to handle input of text
 // Notably it creates a blinking input cursor
-type TextInput struct {
+// Fields are grouped by what they belong to rather than packed by size: one TextInput is
+// built per input, so the bytes are not worth scattering the locks away from what they guard.
+type TextInput struct { //nolint:govet // fieldalignment
 	*entities.Entity
 	ctx *scene.Context
 
@@ -101,7 +103,6 @@ func (ti *TextInput) bindStartTyping() {
 
 // startTyping bind initiates the ability to add text to the textinput area
 func (ti *TextInput) startTyping(me mouse.Event) event.Response {
-
 	ti.bindingLock.Lock()
 	defer ti.bindingLock.Unlock()
 
@@ -117,7 +118,7 @@ func (ti *TextInput) startTyping(me mouse.Event) event.Response {
 	ti.onDown = event.Bind(ti.ctx, key.AnyDown, ti, editBinding)
 	ti.onHeld = event.Bind(ti.ctx, key.AnyHeld, ti, editBinding)
 	ti.onClick = event.Bind(ti.ctx, mouse.Click, ti, func(ti *TextInput, ev *mouse.Event) event.Response {
-		return event.Response(ti.stopTyping())
+		return ti.stopTyping()
 	})
 	return event.ResponseUnbindThisBinding
 }
@@ -143,7 +144,6 @@ func (ti *TextInput) stopTyping() event.Response {
 	ti.onDown.Unbind()
 	ti.onHeld.Unbind()
 	return event.ResponseUnbindThisBinding
-
 }
 
 func (ti *TextInput) undrawBlinker() {
@@ -155,7 +155,6 @@ func (ti *TextInput) undrawBlinker() {
 }
 
 func editBinding(ti *TextInput, k key.Event) event.Response {
-
 	// safety check that we are actually editing
 	if !ti.editing {
 		return event.ResponseUnbindThisBinding
@@ -169,34 +168,9 @@ func editBinding(ti *TextInput, k key.Event) event.Response {
 
 	switch k.Code {
 	case key.ReturnEnter, key.Escape:
-		ti.bindingLock.Lock()
-		defer ti.bindingLock.Unlock()
-		ti.editing = false
-		ti.undrawBlinker()
-		if ti.finalizer != nil {
-			if ti.sensitive {
-				ti.finalizer(ti.sensitiveText)
-			} else {
-				ti.finalizer(txt)
-			}
-		}
-		ti.bindStartTyping()
-		return event.ResponseUnbindThisBinding
+		return ti.finishEditing(txt)
 	case key.DeleteBackspace:
-		if len(txt) != 0 && ti.blinkerIndex != 0 {
-			if ti.blinkerIndex >= len(txt) {
-				txt = txt[:ti.blinkerIndex-1]
-			} else {
-				txt = txt[:ti.blinkerIndex-1] + txt[ti.blinkerIndex:]
-			}
-		}
-		if ti.sensitive && len(ti.sensitiveText) != 0 && ti.blinkerIndex != 0 {
-			if ti.blinkerIndex >= len(ti.sensitiveText) {
-				ti.sensitiveText = ti.sensitiveText[:ti.blinkerIndex-1]
-			} else {
-				ti.sensitiveText = ti.sensitiveText[:ti.blinkerIndex-1] + ti.sensitiveText[ti.blinkerIndex:]
-			}
-		}
+		txt = ti.deleteBack(txt)
 		shift = -1
 	case key.LeftShift, key.RightShift, key.Tab:
 	case key.LeftArrow:
@@ -206,14 +180,7 @@ func editBinding(ti *TextInput, k key.Event) event.Response {
 		ti.updateBlinkerRelative(1)
 		return 0
 	default:
-		if ti.sensitive {
-			txt += "*"
-			ti.sensitiveText = ti.sensitiveText[:ti.blinkerIndex] + string(k.Rune) + ti.sensitiveText[ti.blinkerIndex:]
-		} else if string(k.Rune) == "\x00" {
-			// do nothing
-		} else {
-			txt = txt[:ti.blinkerIndex] + string(k.Rune) + txt[ti.blinkerIndex:]
-		}
+		txt = ti.insertRune(txt, k.Rune)
 		shift = len(string(k.Rune))
 	}
 	ti.textLock.Lock()
@@ -222,6 +189,59 @@ func editBinding(ti *TextInput, k key.Event) event.Response {
 	ti.updateBlinkerRelative(shift)
 
 	return 0
+}
+
+// finishEditing hands the finished text to the finalizer and puts the input back into its
+// waiting-to-be-clicked state.
+func (ti *TextInput) finishEditing(txt string) event.Response {
+	ti.bindingLock.Lock()
+	defer ti.bindingLock.Unlock()
+	ti.editing = false
+	ti.undrawBlinker()
+	if ti.finalizer != nil {
+		if ti.sensitive {
+			ti.finalizer(ti.sensitiveText)
+		} else {
+			ti.finalizer(txt)
+		}
+	}
+	ti.bindStartTyping()
+	return event.ResponseUnbindThisBinding
+}
+
+// deleteBack removes the character before the blinker, from the sensitive text too when the
+// input is masked.
+func (ti *TextInput) deleteBack(txt string) string {
+	txt = removeAt(txt, ti.blinkerIndex)
+	if ti.sensitive {
+		ti.sensitiveText = removeAt(ti.sensitiveText, ti.blinkerIndex)
+	}
+	return txt
+}
+
+// removeAt drops the character before index i, leaving s alone when there is nothing there.
+func removeAt(s string, i int) string {
+	if len(s) == 0 || i == 0 {
+		return s
+	}
+	if i >= len(s) {
+		return s[:i-1]
+	}
+	return s[:i-1] + s[i:]
+}
+
+// insertRune places r at the blinker. A masked input shows a star and keeps the real
+// character aside; a NUL rune is not a character at all and is dropped.
+func (ti *TextInput) insertRune(txt string, r rune) string {
+	switch {
+	case ti.sensitive:
+		ti.sensitiveText = ti.sensitiveText[:ti.blinkerIndex] + string(r) + ti.sensitiveText[ti.blinkerIndex:]
+		return txt + "*"
+	case string(r) == "\x00":
+		return txt
+	default:
+		return txt[:ti.blinkerIndex] + string(r) + txt[ti.blinkerIndex:]
+	}
 }
 
 // blinker for showing where you are performing inputs
@@ -233,7 +253,7 @@ func (ti *TextInput) updateBlinkerToMouse(me mouse.Event) {
 	// convert me to index position
 	// linear scan until its demonstrated we need something with better performance
 	var textIndex int
-	for i := 0; i < len(*ti.currentText); i++ {
+	for i := range len(*ti.currentText) {
 		charX := float64(ti.font.MeasureString((*ti.currentText)[:i]).Round())
 		charX += ti.Renderable.X()
 		if charX > me.X() {

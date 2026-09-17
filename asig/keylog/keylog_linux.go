@@ -12,9 +12,9 @@ import (
 )
 
 type keylogBackend struct {
-	name  string
 	start func() error
 	pop   func() (asig.Event, bool)
+	name  string
 }
 
 var x11Backend = keylogBackend{name: "x11", start: x11driver.StartKeyMonitor, pop: x11driver.Pop}

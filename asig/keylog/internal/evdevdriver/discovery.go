@@ -52,12 +52,13 @@ func watchHotplug(ctx context.Context, dir string, onAdd, onRemove func(name str
 
 	const pollTimeoutMillis = 200
 
+	//nolint:gosec // an inotify descriptor, which the kernel hands back as a small positive int
 	pollFds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	buf := make([]byte, 4096)
 
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return fmt.Errorf("watching for keyboard hotplug: %w", ctx.Err())
 		}
 
 		n, err := unix.Poll(pollFds, pollTimeoutMillis)
@@ -79,26 +80,33 @@ func watchHotplug(ctx context.Context, dir string, onAdd, onRemove func(name str
 			return fmt.Errorf("reading inotify events: %w", err)
 		}
 
-		offset := 0
-		for offset+unix.SizeofInotifyEvent <= nRead {
-			raw := (*unix.InotifyEvent)(unsafe.Pointer(&buf[offset]))
-			nameStart := offset + unix.SizeofInotifyEvent
-			nameEnd := nameStart + int(raw.Len)
-			if nameEnd > nRead {
-				break
-			}
-			name := string(bytes.TrimRight(buf[nameStart:nameEnd], "\x00"))
-			offset = nameEnd
+		dispatchInotifyEvents(buf[:nRead], onAdd, onRemove)
+	}
+}
 
-			if !eventNodePattern.MatchString(name) {
-				continue
-			}
-			switch {
-			case raw.Mask&unix.IN_CREATE != 0:
-				onAdd(name)
-			case raw.Mask&unix.IN_DELETE != 0:
-				onRemove(name)
-			}
+// dispatchInotifyEvents walks one read's worth of inotify records, calling onAdd or onRemove
+// for each one naming an event node. A record whose name runs past what was read is dropped:
+// the rest of it has not arrived.
+func dispatchInotifyEvents(buf []byte, onAdd, onRemove func(name string)) {
+	offset := 0
+	for offset+unix.SizeofInotifyEvent <= len(buf) {
+		raw := (*unix.InotifyEvent)(unsafe.Pointer(&buf[offset]))
+		nameStart := offset + unix.SizeofInotifyEvent
+		nameEnd := nameStart + int(raw.Len)
+		if nameEnd > len(buf) {
+			return
+		}
+		name := string(bytes.TrimRight(buf[nameStart:nameEnd], "\x00"))
+		offset = nameEnd
+
+		if !eventNodePattern.MatchString(name) {
+			continue
+		}
+		switch {
+		case raw.Mask&unix.IN_CREATE != 0:
+			onAdd(name)
+		case raw.Mask&unix.IN_DELETE != 0:
+			onRemove(name)
 		}
 	}
 }

@@ -5,6 +5,7 @@ package cliupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,12 +18,15 @@ import (
 	"github.com/sandgardenhq/affiro/internal/releaseassets"
 )
 
+// ErrUnexpectedStatus means the update API answered with something other than 200.
+var ErrUnexpectedStatus = errors.New("unexpected response status")
+
 // CheckResult mirrors the playground API's CLIVersionCheckResponse shape.
 type CheckResult struct {
 	CurrentVersion  string `json:"currentVersion"`
 	LatestVersion   string `json:"latestVersion"`
-	UpdateAvailable bool   `json:"updateAvailable"`
 	DownloadPath    string `json:"downloadPath"`
+	UpdateAvailable bool   `json:"updateAvailable"`
 }
 
 // Check asks the playground API at baseURL whether currentVersion is out of date for this
@@ -52,7 +56,7 @@ func Check(ctx context.Context, client *http.Client, baseURL, currentVersion str
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return CheckResult{}, fmt.Errorf("version-check request failed with status %d", resp.StatusCode)
+		return CheckResult{}, fmt.Errorf("version check: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 	var result CheckResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -79,7 +83,7 @@ func Download(ctx context.Context, client *http.Client, baseURL, downloadPath, d
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download request failed with status %d", resp.StatusCode)
+		return "", fmt.Errorf("download: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
@@ -125,7 +129,7 @@ func Apply(ctx context.Context, client *http.Client, baseURL, downloadPath, targ
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download request failed with status %d", resp.StatusCode)
+		return fmt.Errorf("download: %w: status %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	opts := selfupdate.Options{TargetPath: targetPath}
@@ -139,7 +143,7 @@ func Apply(ctx context.Context, client *http.Client, baseURL, downloadPath, targ
 
 	if err := selfupdate.Apply(resp.Body, opts); err != nil {
 		if rerr := selfupdate.RollbackError(err); rerr != nil {
-			return fmt.Errorf("failed to roll back after a failed update (system left in an inconsistent state): %w (update error: %v)", rerr, err)
+			return fmt.Errorf("failed to roll back after a failed update (system left in an inconsistent state): %w (update error: %w)", rerr, err)
 		}
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
@@ -152,5 +156,9 @@ func resolveTargetPath(targetPath string) (string, error) {
 	if targetPath != "" {
 		return targetPath, nil
 	}
-	return selfupdate.ExecutableRealPath()
+	path, err := selfupdate.ExecutableRealPath()
+	if err != nil {
+		return "", fmt.Errorf("resolving the running executable: %w", err)
+	}
+	return path, nil
 }
