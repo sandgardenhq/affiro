@@ -8,6 +8,7 @@ import (
 func (l *Asig) Bytes() []byte {
 	buff := []byte{}
 	buff = binary.LittleEndian.AppendUint64(buff, uint64(l.Version))
+	//nolint:gosec // StartSecond is carried as a two's-complement 64-bit round trip; ParseBytes reads it back
 	buff = binary.LittleEndian.AppendUint64(buff, uint64(l.StartSecond))
 	// 4 placeholder bytes for extra information in the future
 	buff = append(buff, []byte{0, 0, 0, 0}...)
@@ -37,7 +38,8 @@ func ParseBytes(b []byte) (*Asig, error) {
 		data = append(data, 0)
 	}
 	return &Asig{
-		Version:     Version(version),
+		Version: Version(version),
+		//nolint:gosec // the other half of the round trip Bytes writes
 		StartSecond: int64(startSecond),
 		Data:        data,
 	}, nil

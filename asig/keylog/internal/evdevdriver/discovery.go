@@ -52,6 +52,7 @@ func watchHotplug(ctx context.Context, dir string, onAdd, onRemove func(name str
 
 	const pollTimeoutMillis = 200
 
+	//nolint:gosec // an inotify descriptor, which the kernel hands back as a small positive int
 	pollFds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	buf := make([]byte, 4096)
 

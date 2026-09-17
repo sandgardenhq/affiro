@@ -32,16 +32,22 @@ const (
 
 type KeysymTable [256][2]uint32
 
+// keysymRune reinterprets an X11 keysym as a rune. Keysyms and runes are both 32 bits wide
+// and the values this table holds are Unicode code points, so nothing is narrowed.
+func keysymRune(keysym uint32) rune {
+	return rune(keysym) //nolint:gosec // see above
+}
+
 func (t *KeysymTable) Lookup(detail uint8, state uint16, numLockMod uint16) (rune, key.Code) {
 	// The key event's rune depends on whether the shift key is down.
-	unshifted := rune(t[detail][0])
+	unshifted := keysymRune(t[detail][0])
 	r := unshifted
 	if state&numLockMod != 0 && isKeypad(t[detail][1]) {
 		if state&ShiftMask == 0 {
-			r = rune(t[detail][1])
+			r = keysymRune(t[detail][1])
 		}
 	} else if state&ShiftMask != 0 {
-		r = rune(t[detail][1])
+		r = keysymRune(t[detail][1])
 		// In X11, a zero keysym when shift is down means to use what the
 		// keysym is when shift is up.
 		if r == 0 {

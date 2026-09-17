@@ -12,9 +12,10 @@ var stringSigDivider byte = '.'
 
 func (l *Asig) String() string {
 	sb := strings.Builder{}
-	sb.WriteString(strconv.FormatInt(int64(l.Version), 10))
+	sb.WriteString(strconv.FormatUint(uint64(l.Version), 10))
 	sb.WriteByte(stringSigDivider)
 	secBytes := make([]byte, 8)
+	//nolint:gosec // StartSecond is carried as a two's-complement 64-bit round trip; ParseString reads it back
 	binary.LittleEndian.PutUint64(secBytes, uint64(l.StartSecond))
 	sb.WriteString(base64.RawURLEncoding.EncodeToString(secBytes))
 	sb.WriteByte(stringSigDivider)
@@ -67,7 +68,7 @@ func ParseString(s string) (*Asig, error) {
 	if len(splitSig) < 4 {
 		return nil, ErrInsufficientDividerBytes
 	}
-	version, err := strconv.ParseInt(splitSig[0], 10, 64)
+	version, err := strconv.ParseUint(splitSig[0], 10, 64)
 	if err != nil {
 		return nil, BadVersionError{Err: err}
 	}
@@ -78,6 +79,7 @@ func ParseString(s string) (*Asig, error) {
 	if len(secBytes) != 8 {
 		return nil, BadStartError{Err: errors.New("insufficient bytes")}
 	}
+	//nolint:gosec // the other half of the round trip String writes
 	startSecond := int64(binary.LittleEndian.Uint64(secBytes))
 	// splitSig-1, not 2, so extra information can be placed here
 	data, err := base64.RawURLEncoding.DecodeString(splitSig[len(splitSig)-1])

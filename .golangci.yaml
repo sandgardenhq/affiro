@@ -117,6 +117,11 @@ linters:
       - linters:
           - goconst
         path: (.+)_test.go
+      # gosec judges the security posture of what ships. A test picking its inputs from
+      # math/rand, or writing a fixture the test binary then has to read back, is neither.
+      - linters:
+          - gosec
+        path: (.+)_test.go
 formatters:
   enable:
     - gofmt

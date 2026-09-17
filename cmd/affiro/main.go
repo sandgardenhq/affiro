@@ -436,7 +436,7 @@ const homeSceneName = "home"
 func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bool) {
 	h := windowHeights[page]
 	maxHistoryViewportHeight := 10000
-	ctx.Window.SetViewportBounds(intgeom.NewRect2(0, 0, 640, int(h)))
+	ctx.Window.SetViewportBounds(intgeom.NewRect2(0, 0, 640, h))
 
 	qrCodeSprite, updateQRSprite := buildQRCode(st)
 
