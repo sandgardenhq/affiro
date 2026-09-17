@@ -46,17 +46,23 @@ func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
 	if r < 0 {
 		return sp
 	}
-	cx := x + r
 	cy := y + r
-	x = cx
-	y = cy
-	// Bresenham algorithm
+	// drawCircleOutline hands back the Bresenham error term, not the radius, and the fill
+	// has always taken its bound from that.
+	bound := drawCircleOutline(rgba, x+r, cy, r, c)
+	fillCircleOutline(rgba, bound, cy, c)
+	return sp
+}
+
+// drawCircleOutline walks the Bresenham circle of radius r about (cx, cy), returning the
+// error term it finished on.
+func drawCircleOutline(rgba *image.RGBA, cx, cy, r int, c color.Color) int {
 	x1, y1, err := -r, 0, 2-2*r
 	for {
-		rgba.Set(x-x1, y+y1, c)
-		rgba.Set(x-y1, y-x1, c)
-		rgba.Set(x+x1, y-y1, c)
-		rgba.Set(x+y1, y+x1, c)
+		rgba.Set(cx-x1, cy+y1, c)
+		rgba.Set(cx-y1, cy-x1, c)
+		rgba.Set(cx+x1, cy-y1, c)
+		rgba.Set(cx+y1, cy+x1, c)
 		r = err
 		if r > x1 {
 			x1++
@@ -67,28 +73,31 @@ func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
 			err += y1*2 + 1
 		}
 		if x1 >= 0 {
-			break
+			return r
 		}
 	}
-	// fill
-	for x2 := range (r * 2) + 1 {
+}
+
+// fillCircleOutline colours each column between the top and bottom of an already-drawn
+// outline.
+func fillCircleOutline(rgba *image.RGBA, bound, cy int, c color.Color) {
+	for x2 := range (bound * 2) + 1 {
 		drawingCol := false
-		for y2 := range (r * 2) + 1 {
+		for y2 := range (bound * 2) + 1 {
 			if !drawingCol {
 				// hit the top of the outline
 				if rgba.RGBAAt(x2, y2) == c {
 					drawingCol = true
 				}
-			} else {
-				// hit the bottom of the outline
-				if y2 > cy && rgba.RGBAAt(x2, y2) == c {
-					break
-				}
-				rgba.Set(x2, y2, c)
+				continue
 			}
+			// hit the bottom of the outline
+			if y2 > cy && rgba.RGBAAt(x2, y2) == c {
+				break
+			}
+			rgba.Set(x2, y2, c)
 		}
 	}
-	return sp
 }
 
 func LoadSVG(fs fs.FS, path string, width, height int, defaultColor string) *render.Sprite {
