@@ -97,7 +97,6 @@ var WindowClosingEvent = event.RegisterEvent[struct{}]()
 
 // New constructs a new TitleBar
 func New(ctx *scene.Context, opts ...Option) *TitleBar {
-
 	construct := DefaultConstructor
 	for _, opt := range opts {
 		construct = opt(construct)
@@ -133,90 +132,16 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 		// sort close, min, max
 		slices.Sort(construct.Buttons)
 	}
+	hdr.addButtons(ctx, construct, dragBarWidth)
+	hdr.addDragBar(ctx, construct, font, dragBarWidth, screenWidth)
+	return hdr
+}
 
+// addButtons builds each configured button and places it along the right of the bar, or
+// along the left when the OSX style is asked for.
+func (hdr *TitleBar) addButtons(ctx *scene.Context, construct Constructor, dragBarWidth float64) {
 	for i, button := range construct.Buttons {
-		var r render.Modifiable = render.NewColorBox(int(construct.ButtonWidth), int(construct.Height), construct.Color)
-		txt := strconv.Itoa(i)
-		var clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
-			return 0
-		}
-		var btnOffset floatgeom.Point2
-
-		switch button {
-		case ButtonMinimize:
-			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
-					stateNoHover: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					stateHover:   SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					stateOnPress: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
-				})
-			} else {
-				// TODO: this duplicates, poorly, native osx buttons; we ideally could reuse them and put our content in the same area as the native top bar;
-				// this requires more direct interfacing with the NSWindow from objc
-				nohover := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{255, 0xcc, 0, 255})
-				nofocus := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0xaa, 0xaa, 255})
-				press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0x99, 0, 255})
-				icon := SpriteFromShape(thickMinimizeIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{100, 100, 100, 255}, color.RGBA{0, 0, 0, 0})
-				icon.SetPos(-3, -3)
-				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
-					stateNoHover: nohover,
-					"nofocus":    nofocus,
-					stateHover:   render.NewCompositeM(nohover, icon),
-					stateOnPress: render.NewCompositeM(press, icon),
-				})
-				btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
-			}
-			txt = ""
-			clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
-				//nolint:errcheck
-				ctx.Window.(*oak.Window).Minimize()
-				return 0
-			}
-		case ButtonClose:
-			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
-					stateNoHover: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					stateHover:   SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					stateOnPress: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
-				})
-			} else {
-				nohover := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{255, 0, 0, 255})
-				nofocus := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0xaa, 0xaa, 255})
-				press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xcc, 0, 0, 255})
-				icon := SpriteFromShape(thickCloseIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{30, 30, 30, 255}, color.RGBA{0, 0, 0, 0})
-				icon.SetPos(-3, -3)
-				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
-					stateNoHover: nohover,
-					"nofocus":    nofocus,
-					stateHover:   render.NewCompositeM(nohover, icon),
-					stateOnPress: render.NewCompositeM(press, icon),
-				})
-				btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
-			}
-			txt = ""
-			clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
-				<-event.TriggerOn(ctx, WindowClosingEvent, struct{}{})
-				ctx.Window.Quit()
-				return 0
-			}
-		case ButtonMaximize:
-			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
-					stateNoHover:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					stateHover:         SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					stateOnPress:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
-					stateNoHoverRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					stateHoverRevert:   SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					stateOnPressRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
-				})
-			} // else: TODO: OSX maximize button
-			txt = ""
-
-			clickBinding = func(b *entities.Entity, _ *mouse.Event) event.Response {
-				hdr.maximized = toggleMaximize(ctx, b)
-				return 0
-			}
-		}
+		r, txt, btnOffset, clickBinding := hdr.buildButton(ctx, construct, button, i)
 		bw := construct.ButtonWidth
 		bh := construct.Height
 		x := btnOffset.X() + float64(i)*construct.ButtonWidth
@@ -235,36 +160,9 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 			btn.Height(bh),
 			btn.Width(bw),
 			btn.Layers(construct.Layers...),
-			btn.Binding(mouse.Start, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				if sw, ok := b.Renderable.(*render.Switch); ok {
-					suffix, _ := b.Metadata("switch-suffix")
-					//nolint:errcheck
-					sw.Set(stateHover + suffix)
-				}
-				return 0
-			}),
-			btn.Binding(mouse.Stop, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				if sw, ok := b.Renderable.(*render.Switch); ok {
-					nofocus, _ := b.Metadata("nofocus")
-					if nofocus == "on" {
-						//nolint:errcheck
-						sw.Set("nofocus")
-					} else {
-						suffix, _ := b.Metadata("switch-suffix")
-						//nolint:errcheck
-						sw.Set(stateNoHover + suffix)
-					}
-				}
-				return 0
-			}),
-			btn.Binding(mouse.PressOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				if sw, ok := b.Renderable.(*render.Switch); ok {
-					suffix, _ := b.Metadata("switch-suffix")
-					//nolint:errcheck
-					sw.Set(stateOnPress + suffix)
-				}
-				return 0
-			}),
+			btn.Binding(mouse.Start, setSwitchState(stateHover)),
+			btn.Binding(mouse.Stop, unhover),
+			btn.Binding(mouse.PressOn, setSwitchState(stateOnPress)),
 			btn.Click(clickBinding),
 			btn.Binding(oak.FocusLoss, func(b *entities.Entity, _ struct{}) event.Response {
 				if construct.ButtonStyle == ButtonStyleOSX {
@@ -294,6 +192,161 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 			// })),
 		)
 	}
+}
+
+// dragStep moves the window by however far the cursor has travelled since the drag started.
+// lastDragPos guards against acting twice on one position, which has only been seen on
+// linux/x11 and may not be needed elsewhere.
+func (hdr *TitleBar) dragStep(ctx *scene.Context, lastDragPos *floatgeom.Point2) {
+	x, y := ctx.Window.(*oak.Window).GetCursorPosition()
+	pt := floatgeom.Point2{x, y}
+	delta := pt.Sub(hdr.draggingStartPos)
+	if delta == (floatgeom.Point2{}) || pt == *lastDragPos {
+		return
+	}
+	newX, newY := ctx.Window.GetDesktopPosition()
+	newX += delta.X()
+	newY += delta.Y()
+	if hdr.maximized {
+		if mxbtn, ok := hdr.buttons[ButtonMaximize]; ok {
+			hdr.maximized = toggleMaximize(ctx, mxbtn)
+		}
+	}
+	screenBounds := ctx.Window.Bounds()
+	screenHeight := screenBounds.Y()
+	screenWidth := screenBounds.X()
+	scale := ctx.Window.Scale()
+	//nolint:errcheck
+	ctx.Window.MoveWindow(int(newX), int(newY), int(float64(screenWidth)*scale), int(float64(screenHeight)*scale))
+	if !floatgeom.NewRect2WH(0, 0, float64(screenWidth), float64(screenHeight)).Contains(hdr.draggingStartPos) {
+		hdr.draggingStartPos = floatgeom.Point2{
+			float64(screenWidth) / 2, 16,
+		}
+	}
+	*lastDragPos = pt
+}
+
+// setSwitchState returns a binding that moves a button's render.Switch to the named state,
+// keeping whatever suffix the button carries (the maximize button has a reverted set).
+func setSwitchState(state string) func(*entities.Entity, *mouse.Event) event.Response {
+	return func(b *entities.Entity, _ *mouse.Event) event.Response {
+		if sw, ok := b.Renderable.(*render.Switch); ok {
+			suffix, _ := b.Metadata("switch-suffix")
+			//nolint:errcheck
+			sw.Set(state + suffix)
+		}
+		return 0
+	}
+}
+
+// unhover returns a button to rest, or to its unfocused look when the window has lost focus.
+func unhover(b *entities.Entity, _ *mouse.Event) event.Response {
+	sw, ok := b.Renderable.(*render.Switch)
+	if !ok {
+		return 0
+	}
+	if nofocus, _ := b.Metadata("nofocus"); nofocus == "on" {
+		//nolint:errcheck
+		sw.Set("nofocus")
+		return 0
+	}
+	suffix, _ := b.Metadata("switch-suffix")
+	//nolint:errcheck
+	sw.Set(stateNoHover + suffix)
+	return 0
+}
+
+// buildButton produces the renderable, label, offset and click handler for one titlebar
+// button. A button this bar does not know about keeps its index as its label.
+func (hdr *TitleBar) buildButton(ctx *scene.Context, construct Constructor, button Button, i int) (render.Modifiable, string, floatgeom.Point2, func(*entities.Entity, *mouse.Event) event.Response) {
+	var r render.Modifiable = render.NewColorBox(int(construct.ButtonWidth), int(construct.Height), construct.Color)
+	txt := strconv.Itoa(i)
+	var clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
+		return 0
+	}
+	var btnOffset floatgeom.Point2
+
+	switch button {
+	case ButtonMinimize:
+		if construct.ButtonStyle == ButtonStyleDefault {
+			r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+				stateNoHover: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+				stateHover:   SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+				stateOnPress: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+			})
+		} else {
+			// TODO: this duplicates, poorly, native osx buttons; we ideally could reuse them and put our content in the same area as the native top bar;
+			// this requires more direct interfacing with the NSWindow from objc
+			nohover := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{255, 0xcc, 0, 255})
+			nofocus := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0xaa, 0xaa, 255})
+			press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0x99, 0, 255})
+			icon := SpriteFromShape(thickMinimizeIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{100, 100, 100, 255}, color.RGBA{0, 0, 0, 0})
+			icon.SetPos(-3, -3)
+			r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+				stateNoHover: nohover,
+				"nofocus":    nofocus,
+				stateHover:   render.NewCompositeM(nohover, icon),
+				stateOnPress: render.NewCompositeM(press, icon),
+			})
+			btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
+		}
+		txt = ""
+		clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
+			//nolint:errcheck
+			ctx.Window.(*oak.Window).Minimize()
+			return 0
+		}
+	case ButtonClose:
+		if construct.ButtonStyle == ButtonStyleDefault {
+			r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+				stateNoHover: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+				stateHover:   SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+				stateOnPress: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+			})
+		} else {
+			nohover := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{255, 0, 0, 255})
+			nofocus := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0xaa, 0xaa, 255})
+			press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xcc, 0, 0, 255})
+			icon := SpriteFromShape(thickCloseIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{30, 30, 30, 255}, color.RGBA{0, 0, 0, 0})
+			icon.SetPos(-3, -3)
+			r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+				stateNoHover: nohover,
+				"nofocus":    nofocus,
+				stateHover:   render.NewCompositeM(nohover, icon),
+				stateOnPress: render.NewCompositeM(press, icon),
+			})
+			btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
+		}
+		txt = ""
+		clickBinding = func(*entities.Entity, *mouse.Event) event.Response {
+			<-event.TriggerOn(ctx, WindowClosingEvent, struct{}{})
+			ctx.Window.Quit()
+			return 0
+		}
+	case ButtonMaximize:
+		if construct.ButtonStyle == ButtonStyleDefault {
+			r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+				stateNoHover:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+				stateHover:         SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+				stateOnPress:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+				stateNoHoverRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+				stateHoverRevert:   SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+				stateOnPressRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+			})
+		} // else: TODO: OSX maximize button
+		txt = ""
+
+		clickBinding = func(b *entities.Entity, _ *mouse.Event) event.Response {
+			hdr.maximized = toggleMaximize(ctx, b)
+			return 0
+		}
+	}
+	return r, txt, btnOffset, clickBinding
+}
+
+// addDragBar builds the title area, which doubles as the handle the window is dragged by and
+// double-clicked to maximise.
+func (hdr *TitleBar) addDragBar(ctx *scene.Context, construct Constructor, font *render.Font, dragBarWidth float64, screenWidth int) {
 	layers := construct.Layers
 	if len(layers) != 0 {
 		layers[len(layers)-1]--
@@ -328,37 +381,7 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 		//    the window will freeze until you bring the mouse cursor back into the window.
 		btn.Binding(event.Enter, func(_ *entities.Entity, ev event.EnterPayload) event.Response {
 			if hdr.draggingWindow {
-				x, y := ctx.Window.(*oak.Window).GetCursorPosition()
-				pt := floatgeom.Point2{x, y}
-				delta := pt.Sub(hdr.draggingStartPos)
-				if delta == (floatgeom.Point2{}) {
-					return 0
-				}
-				// TODO: this has only been tested on linux/x11, it's possible this causes problems
-				// on other platforms
-				if pt == lastDragPos {
-					return 0
-				}
-				newX, newY := ctx.Window.GetDesktopPosition()
-				newX += delta.X()
-				newY += delta.Y()
-				if hdr.maximized {
-					if mxbtn, ok := hdr.buttons[ButtonMaximize]; ok {
-						hdr.maximized = toggleMaximize(ctx, mxbtn)
-					}
-				}
-				screenBounds := ctx.Window.Bounds()
-				screenHeight := screenBounds.Y()
-				screenWidth := screenBounds.X()
-				scale := ctx.Window.Scale()
-				//nolint:errcheck
-				ctx.Window.MoveWindow(int(newX), int(newY), int(float64(screenWidth)*scale), int(float64(screenHeight)*scale))
-				if !floatgeom.NewRect2WH(0, 0, float64(screenWidth), float64(screenHeight)).Contains(hdr.draggingStartPos) {
-					hdr.draggingStartPos = floatgeom.Point2{
-						float64(screenWidth) / 2, 16,
-					}
-				}
-				lastDragPos = pt
+				hdr.dragStep(ctx, &lastDragPos)
 			}
 			return 0
 		}),
@@ -386,7 +409,6 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 		btn.Height(construct.Height),
 		btn.Color(construct.Color),
 	)
-	return hdr
 }
 
 var closeIcon = shape.JustIn(shape.AndIn(
