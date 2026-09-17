@@ -101,7 +101,6 @@ func (ti *TextInput) bindStartTyping() {
 
 // startTyping bind initiates the ability to add text to the textinput area
 func (ti *TextInput) startTyping(me mouse.Event) event.Response {
-
 	ti.bindingLock.Lock()
 	defer ti.bindingLock.Unlock()
 
@@ -117,7 +116,7 @@ func (ti *TextInput) startTyping(me mouse.Event) event.Response {
 	ti.onDown = event.Bind(ti.ctx, key.AnyDown, ti, editBinding)
 	ti.onHeld = event.Bind(ti.ctx, key.AnyHeld, ti, editBinding)
 	ti.onClick = event.Bind(ti.ctx, mouse.Click, ti, func(ti *TextInput, ev *mouse.Event) event.Response {
-		return event.Response(ti.stopTyping())
+		return ti.stopTyping()
 	})
 	return event.ResponseUnbindThisBinding
 }
@@ -143,7 +142,6 @@ func (ti *TextInput) stopTyping() event.Response {
 	ti.onDown.Unbind()
 	ti.onHeld.Unbind()
 	return event.ResponseUnbindThisBinding
-
 }
 
 func (ti *TextInput) undrawBlinker() {
@@ -206,12 +204,13 @@ func editBinding(ti *TextInput, k key.Event) event.Response {
 		ti.updateBlinkerRelative(1)
 		return 0
 	default:
-		if ti.sensitive {
+		switch {
+		case ti.sensitive:
 			txt += "*"
 			ti.sensitiveText = ti.sensitiveText[:ti.blinkerIndex] + string(k.Rune) + ti.sensitiveText[ti.blinkerIndex:]
-		} else if string(k.Rune) == "\x00" {
+		case string(k.Rune) == "\x00":
 			// do nothing
-		} else {
+		default:
 			txt = txt[:ti.blinkerIndex] + string(k.Rune) + txt[ti.blinkerIndex:]
 		}
 		shift = len(string(k.Rune))
@@ -233,7 +232,7 @@ func (ti *TextInput) updateBlinkerToMouse(me mouse.Event) {
 	// convert me to index position
 	// linear scan until its demonstrated we need something with better performance
 	var textIndex int
-	for i := 0; i < len(*ti.currentText); i++ {
+	for i := range len(*ti.currentText) {
 		charX := float64(ti.font.MeasureString((*ti.currentText)[:i]).Round())
 		charX += ti.Renderable.X()
 		if charX > me.X() {

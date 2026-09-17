@@ -1,7 +1,6 @@
 package oakx
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"io/fs"
@@ -42,7 +41,7 @@ func NewFilledCircle(c color.Color, radius, thickness float64, offsets ...float6
 
 // This is notably smoother than render.DrawCircle
 func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
-	sp := render.NewEmptySprite(0, 0, int(r)*2+1, int(r)*2+1)
+	sp := render.NewEmptySprite(0, 0, r*2+1, r*2+1)
 	rgba := sp.GetRGBA()
 	if r < 0 {
 		return sp
@@ -72,9 +71,9 @@ func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
 		}
 	}
 	// fill
-	for x2 := 0; x2 < (r*2)+1; x2++ {
+	for x2 := range (r * 2) + 1 {
 		drawingCol := false
-		for y2 := 0; y2 < (r*2)+1; y2++ {
+		for y2 := range (r * 2) + 1 {
 			if !drawingCol {
 				// hit the top of the outline
 				if rgba.RGBAAt(x2, y2) == c {
@@ -90,43 +89,6 @@ func NewCircleAlt(x, y, r int, c color.Color) *render.Sprite {
 		}
 	}
 	return sp
-}
-
-func InvertColors(rgba *image.RGBA) {
-	bounds := rgba.Bounds()
-	w := bounds.Max.X
-	h := bounds.Max.Y
-	for x := range w {
-		for y := range h {
-			r, g, b, a := rgba.At(x, y).RGBA()
-			midPoint := uint32(0xffff >> 1)
-			fmt.Print("in: ", r, g, b, a, midPoint, "  ")
-			if r < midPoint {
-				r += 2 * (midPoint - r)
-			} else {
-				r -= 2 * (r - midPoint)
-			}
-			if g < midPoint {
-				g += 2 * (midPoint - g)
-			} else {
-				g -= 2 * (g - midPoint)
-			}
-			if b < midPoint {
-				b += 2 * (midPoint - b)
-			} else {
-				b -= 2 * (b - midPoint)
-			}
-			// a is unchanged
-			newRGBA := color.RGBA64{
-				uint16(r),
-				uint16(g),
-				uint16(b),
-				uint16(a),
-			}
-			fmt.Println("out: ", r, g, b, a)
-			rgba.Set(x, y, newRGBA)
-		}
-	}
 }
 
 func LoadSVG(fs fs.FS, path string, width, height int, defaultColor string) *render.Sprite {

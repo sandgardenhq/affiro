@@ -13,6 +13,6 @@ func Read(r io.Reader) (signature *Asig, remaining *bufio.Reader, err error) {
 	if err != nil {
 		return nil, buff, err
 	}
-	signature, err = ParseString(string(candidate))
+	signature, err = ParseString(candidate)
 	return signature, buff, err
 }

@@ -139,7 +139,7 @@ func Apply(ctx context.Context, client *http.Client, baseURL, downloadPath, targ
 
 	if err := selfupdate.Apply(resp.Body, opts); err != nil {
 		if rerr := selfupdate.RollbackError(err); rerr != nil {
-			return fmt.Errorf("failed to roll back after a failed update (system left in an inconsistent state): %w (update error: %v)", rerr, err)
+			return fmt.Errorf("failed to roll back after a failed update (system left in an inconsistent state): %w (update error: %w)", rerr, err)
 		}
 		return fmt.Errorf("failed to apply update: %w", err)
 	}

@@ -100,6 +100,17 @@ func main() {
 
 var fullVersion = "affiro " + buildinfo.Version
 
+// Button states, as keyed in the render.Switch built for each button.
+const (
+	stateHover   = "hover"
+	stateUnhover = "unhover"
+	statePress   = "press"
+
+	stateActiveHover   = "active-hover"
+	stateActiveUnhover = "active-unhover"
+	stateActivePress   = "active-press"
+)
+
 const defaultAPIBaseURL = "https://app.affiro.com"
 
 const helpText = `affiro CLI
@@ -185,7 +196,6 @@ func run() error {
 			if err := st.Refresh(); err != nil {
 				fmt.Println(err)
 			}
-
 		}
 	}()
 	// TODO: library utlity for this:
@@ -204,13 +214,9 @@ func run() error {
 				fmt.Println("error writing event: " + err.Error())
 			}
 			sigStr := st.String()
-			switch v := e.(type) {
-			case asig.KeyDownEvent:
-				if v.Key == key.CodeBackslash {
-					err := clipboard.WriteAll(sigStr)
-					if err != nil {
-						fmt.Println("error writing to clipboard: " + err.Error())
-					}
+			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+				if err := clipboard.WriteAll(sigStr); err != nil {
+					fmt.Println("error writing to clipboard: " + err.Error())
 				}
 			}
 			fmt.Print(sigStr + "\r")
@@ -275,11 +281,11 @@ func guiMonitor(st *state.State) error {
 				keyMonitor.set(mon)
 			}
 			if !keylogx.LocalKeyEventsPresent {
-				event.GlobalBind(ctx, event.EventID[*mouse.Event](mouse.Release), func(ev *mouse.Event) event.Response {
+				event.GlobalBind(ctx, mouse.Release, func(ev *mouse.Event) event.Response {
 					st.MustWrite(asig.MouseUpEvent{})
 					return 0
 				})
-				event.GlobalBind(ctx, event.EventID[okey.Event](okey.AnyDown), func(ev okey.Event) event.Response {
+				event.GlobalBind(ctx, okey.AnyDown, func(ev okey.Event) event.Response {
 					st.MustWrite(asig.KeyDownEvent{
 						Key:            ev.Code,
 						String:         string(ev.Rune),
@@ -289,7 +295,7 @@ func guiMonitor(st *state.State) error {
 					})
 					return 0
 				})
-				event.GlobalBind(ctx, event.EventID[okey.Event](okey.AnyHeld), func(ev okey.Event) event.Response {
+				event.GlobalBind(ctx, okey.AnyHeld, func(ev okey.Event) event.Response {
 					st.MustWrite(asig.KeyDownEvent{
 						Key:            ev.Code,
 						String:         string(ev.Rune),
@@ -483,10 +489,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
-		modeSwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-			"hover":   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), modeSwitchSprite),
-			"unhover": modeSwitchSprite,
-			"press":   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), modeSwitchSprite),
+		modeSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+			stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), modeSwitchSprite),
+			stateUnhover: modeSwitchSprite,
+			statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), modeSwitchSprite),
 		})
 		x := windowWidth - ((titleBarButtonSize * 2) + 28*pixelMagnifier)
 		if keylogx.ButtonStyle != titlebar.ButtonStyleOSX {
@@ -499,10 +505,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 			btn.Width(titleBarButtonSize),
 			btn.Height(titleBarButtonSize),
 			btn.Pos(x, y),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-			btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding("press")),
-			btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding("hover")),
+			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+			btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
+			btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 			btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 				globalDarkMode = !globalDarkMode
 				if globalDarkMode {
@@ -524,18 +530,18 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 
 			hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
 			pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
-			loginSwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-				"hover":   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), loginIcon),
-				"unhover": loginIcon,
-				"press":   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), loginIcon),
+			loginSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+				stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), loginIcon),
+				stateUnhover: loginIcon,
+				statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), loginIcon),
 			})
 
 			loggedInOpts = append(loggedInOpts,
 				btn.Renderable(loginSwitch),
-				btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-				btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding("press")),
-				btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding("hover")),
+				btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+				btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
+				btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 				btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 					go func() {
 						token, err := auth.Authenticate(ctx, st.RemoteHost)
@@ -620,16 +626,16 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
 		swMap := map[string]render.Modifiable{
-			"active-hover":   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), sprite),
-			"active-unhover": render.NewCompositeM(activeBox.Renderable.(*render.Sprite), sprite),
-			"active-press":   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), sprite),
-			"hover":          render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), sprite),
-			"unhover":        sprite,
-			"press":          render.NewCompositeM(pressBox.Renderable.(*render.Sprite), sprite),
+			stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), sprite),
+			stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), sprite),
+			stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), sprite),
+			stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), sprite),
+			stateUnhover:       sprite,
+			statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), sprite),
 		}
-		starting := "unhover"
+		starting := stateUnhover
 		if page == vb.pageName {
-			starting = "active-unhover"
+			starting = stateActiveUnhover
 		}
 		layers := []int{1, 1}
 		if vb.unfinished && !showUnfinishedPages {
@@ -641,10 +647,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 			btn.Width(viewBarButtonWidth),
 			btn.Height(viewBarButtonHeight),
 			btn.Pos(viewBar.X()+viewBarButtonXMargin, nextViewBarY),
-			btn.Binding(mouse.Start, ActiveSwitchBinding("hover")),
-			btn.Binding(mouse.Stop, ActiveSwitchBinding("unhover")),
-			btn.Binding(mouse.PressOn, ActiveSwitchBinding("press")),
-			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding("hover")),
+			btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
+			btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
+			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
 			btn.Binding(mouse.ClickOn, viewButtonResize(ctx, &page, vb)),
 			btn.Binding(pageChangeEvent, viewButtonActiveSwitch(vb)),
 		)
@@ -672,16 +678,16 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
 		swMap := map[string]render.Modifiable{
-			"active-hover":   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), settingsSprite),
-			"active-unhover": render.NewCompositeM(activeBox.Renderable.(*render.Sprite), settingsSprite),
-			"active-press":   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), settingsSprite),
-			"hover":          render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), settingsSprite),
-			"unhover":        settingsSprite,
-			"press":          render.NewCompositeM(pressBox.Renderable.(*render.Sprite), settingsSprite),
+			stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), settingsSprite),
+			stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), settingsSprite),
+			stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), settingsSprite),
+			stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), settingsSprite),
+			stateUnhover:       settingsSprite,
+			statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), settingsSprite),
 		}
-		starting := "unhover"
+		starting := stateUnhover
 		if page == PageNameSettings {
-			starting = "active-unhover"
+			starting = stateActiveUnhover
 		}
 
 		icon := btn.New(ctx,
@@ -690,10 +696,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 			btn.Width(viewBarButtonWidth),
 			btn.Height(viewBarButtonHeight),
 			btn.Pos(viewBar.X()+viewBarButtonXMargin, float64(h)-(viewBarButtonHeight+(15*pixelMagnifier))),
-			btn.Binding(mouse.Start, ActiveSwitchBinding("hover")),
-			btn.Binding(mouse.Stop, ActiveSwitchBinding("unhover")),
-			btn.Binding(mouse.PressOn, ActiveSwitchBinding("press")),
-			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding("hover")),
+			btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
+			btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
+			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
 			btn.Binding(mouse.ClickOn, viewButtonResize(ctx, &page, viewBarButton{pageName: PageNameSettings})),
 			btn.Binding(pageChangeEvent, viewButtonActiveSwitch(viewBarButton{pageName: PageNameSettings})),
 			btn.Binding(pageChangeEvent, func(b *entities.Entity, p PageName) event.Response {
@@ -844,10 +850,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 			copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "copy.svg"), 13*pixelMagnifier, 13*pixelMagnifier, copyIconColor)
 			copyIcon.SetPos(7*pixelMagnifier, 7*pixelMagnifier)
 
-			copySwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-				"unhover": render.NewCompositeM(unhoverBox.Renderable.(*render.Sprite), copyIcon),
-				"hover":   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), copyIcon),
-				"press":   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), copyIcon),
+			copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+				stateUnhover: render.NewCompositeM(unhoverBox.Renderable.(*render.Sprite), copyIcon),
+				stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), copyIcon),
+				statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), copyIcon),
 			})
 
 			copyButton := btn.New(ctx, btn.Layers(0, 0),
@@ -855,10 +861,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 				btn.Height(25*pixelMagnifier),
 				btn.Renderable(copySwitch),
 				btn.Pos(signatureX+180*pixelMagnifier, nextYStart+12*pixelMagnifier),
-				btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-				btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding("press")),
-				btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding("hover")),
+				btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+				btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+				btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 				btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 					if err := clipboard.WriteAll(sig.Asig.String()); err != nil {
 						fmt.Println(err)
@@ -1121,10 +1127,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
-		copySwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-			"unhover": unhoverBox.Renderable.(*render.Sprite),
-			"hover":   hoverBox.Renderable.(*render.Sprite),
-			"press":   pressBox.Renderable.(*render.Sprite),
+		copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+			stateHover:   hoverBox.Renderable.(*render.Sprite),
+			statePress:   pressBox.Renderable.(*render.Sprite),
 		})
 
 		uploadButton = btn.New(ctx,
@@ -1137,10 +1143,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 			btn.Mod(wideCutRound(darkMode)),
 			btn.Font(fonts.get(fontNameCopy)),
 			btn.Text("Sign Doc"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding("press")),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding("hover")),
+			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 				err := browser.OpenURL(st.RemoteHost + "/upload-document?signature=" + st.String())
 				if err != nil {
@@ -1182,10 +1188,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
-		copySwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-			"unhover": unhoverBox.Renderable.(*render.Sprite),
-			"hover":   hoverBox.Renderable.(*render.Sprite),
-			"press":   pressBox.Renderable.(*render.Sprite),
+		copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+			stateHover:   hoverBox.Renderable.(*render.Sprite),
+			statePress:   pressBox.Renderable.(*render.Sprite),
 		})
 
 		copyButton = btn.New(ctx,
@@ -1198,10 +1204,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 			btn.Mod(wideCutRound(darkMode)),
 			btn.Font(fonts.get(fontNameCopy)),
 			btn.Text("Copy"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding("press")),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding("hover")),
+			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 				if err := clipboard.WriteAll(st.String()); err != nil {
 					fmt.Println(err)
@@ -1230,10 +1236,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(Iff(darkMode, colors.Black, colors.White)))
 		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
 		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffOffOffWhite))
-		resetSwitch := render.NewSwitch("unhover", map[string]render.Modifiable{
-			"unhover": unhoverBox.Renderable.(*render.Sprite),
-			"hover":   hoverBox.Renderable.(*render.Sprite),
-			"press":   pressBox.Renderable.(*render.Sprite),
+		resetSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+			stateHover:   hoverBox.Renderable.(*render.Sprite),
+			statePress:   pressBox.Renderable.(*render.Sprite),
 		})
 
 		resetButton := btn.New(ctx,
@@ -1246,10 +1252,10 @@ func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOf
 			btn.Mod(wideCutRound(darkMode)),
 			btn.Font(fonts.get(fontNameReset)),
 			btn.Text("Reset"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding("hover")),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding("unhover")),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding("press")),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding("hover")),
+			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
 			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
 				newSig := asigx.New()
 				err := st.Reset(newSig)

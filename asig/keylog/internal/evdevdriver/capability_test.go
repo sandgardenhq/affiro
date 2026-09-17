@@ -5,13 +5,13 @@ package evdevdriver
 import "testing"
 
 func makeBitmap(codes []uint16) []byte {
-	var max uint16
+	var highest uint16
 	for _, c := range codes {
-		if c > max {
-			max = c
+		if c > highest {
+			highest = c
 		}
 	}
-	bitmap := make([]byte, max/bitsPerByte+1)
+	bitmap := make([]byte, highest/bitsPerByte+1)
 	for _, c := range codes {
 		bitmap[c/bitsPerByte] |= 1 << (c % bitsPerByte)
 	}

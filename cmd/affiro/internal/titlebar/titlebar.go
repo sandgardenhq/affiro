@@ -21,6 +21,17 @@ import (
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/oakx"
 )
 
+// Button states, as keyed in the render.Switch built for each titlebar button.
+const (
+	stateNoHover = "nohover"
+	stateHover   = "hover"
+	stateOnPress = "onpress"
+
+	stateNoHoverRevert = "nohover-revert"
+	stateHoverRevert   = "hover-revert"
+	stateOnPressRevert = "onpress-revert"
+)
+
 type TitleBar struct {
 	lastPressAt        time.Time
 	draggingStartPos   floatgeom.Point2
@@ -132,10 +143,10 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 		switch button {
 		case ButtonMinimize:
 			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch("nohover", map[string]render.Modifiable{
-					"nohover": SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					"hover":   SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					"onpress": SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+					stateNoHover: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+					stateHover:   SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+					stateOnPress: SpriteFromShape(minimizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
 				})
 			} else {
 				// TODO: this duplicates, poorly, native osx buttons; we ideally could reuse them and put our content in the same area as the native top bar;
@@ -145,11 +156,11 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 				press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xaa, 0x99, 0, 255})
 				icon := SpriteFromShape(thickMinimizeIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{100, 100, 100, 255}, color.RGBA{0, 0, 0, 0})
 				icon.SetPos(-3, -3)
-				r = render.NewSwitch("nohover", map[string]render.Modifiable{
-					"nohover": nohover,
-					"nofocus": nofocus,
-					"hover":   render.NewCompositeM(nohover, icon),
-					"onpress": render.NewCompositeM(press, icon),
+				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+					stateNoHover: nohover,
+					"nofocus":    nofocus,
+					stateHover:   render.NewCompositeM(nohover, icon),
+					stateOnPress: render.NewCompositeM(press, icon),
 				})
 				btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
 			}
@@ -161,10 +172,10 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 			}
 		case ButtonClose:
 			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch("nohover", map[string]render.Modifiable{
-					"nohover": SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					"hover":   SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					"onpress": SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+					stateNoHover: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+					stateHover:   SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+					stateOnPress: SpriteFromShape(closeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
 				})
 			} else {
 				nohover := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{255, 0, 0, 255})
@@ -172,11 +183,11 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 				press := oakx.NewCircleAlt(0, 0, int(construct.ButtonWidth/6), color.RGBA{0xcc, 0, 0, 255})
 				icon := SpriteFromShape(thickCloseIcon, int(construct.ButtonWidth*(2.0/5)), int(construct.Height*(2.0/5)), color.RGBA{30, 30, 30, 255}, color.RGBA{0, 0, 0, 0})
 				icon.SetPos(-3, -3)
-				r = render.NewSwitch("nohover", map[string]render.Modifiable{
-					"nohover": nohover,
-					"nofocus": nofocus,
-					"hover":   render.NewCompositeM(nohover, icon),
-					"onpress": render.NewCompositeM(press, icon),
+				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+					stateNoHover: nohover,
+					"nofocus":    nofocus,
+					stateHover:   render.NewCompositeM(nohover, icon),
+					stateOnPress: render.NewCompositeM(press, icon),
 				})
 				btnOffset = floatgeom.Point2{construct.ButtonWidth / 4, construct.Height / 3}
 			}
@@ -188,17 +199,15 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 			}
 		case ButtonMaximize:
 			if construct.ButtonStyle == ButtonStyleDefault {
-				r = render.NewSwitch("nohover", map[string]render.Modifiable{
-					"nohover":        SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					"hover":          SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					"onpress":        SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
-					"nohover-revert": SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
-					"hover-revert":   SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
-					"onpress-revert": SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+				r = render.NewSwitch(stateNoHover, map[string]render.Modifiable{
+					stateNoHover:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+					stateHover:         SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+					stateOnPress:       SpriteFromShape(maximizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
+					stateNoHoverRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.Color),
+					stateHoverRevert:   SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.HighlightColor),
+					stateOnPressRevert: SpriteFromShape(normalizeIcon, int(construct.ButtonWidth), int(construct.Height), color.RGBA{255, 255, 255, 255}, construct.MouseDownColor),
 				})
-			} //else {
-			// TODO: OSX maximize button
-			//}
+			} // else: TODO: OSX maximize button
 			txt = ""
 
 			clickBinding = func(b *entities.Entity, _ *mouse.Event) event.Response {
@@ -213,10 +222,9 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 		if construct.ButtonStyle != ButtonStyleOSX {
 			x += dragBarWidth
 		} else {
-			bw = bw / 2
+			bw /= 2
 			x -= float64(i) * bw
-			bh = bh / 2
-			//y += bh / 8
+			bh /= 2
 		}
 		hdr.buttons[button] = btn.New(ctx,
 			btn.Text(txt),
@@ -229,7 +237,7 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 				if sw, ok := b.Renderable.(*render.Switch); ok {
 					suffix, _ := b.Metadata("switch-suffix")
 					//nolint:errcheck
-					sw.Set("hover" + suffix)
+					sw.Set(stateHover + suffix)
 				}
 				return 0
 			}),
@@ -242,7 +250,7 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 					} else {
 						suffix, _ := b.Metadata("switch-suffix")
 						//nolint:errcheck
-						sw.Set("nohover" + suffix)
+						sw.Set(stateNoHover + suffix)
 					}
 				}
 				return 0
@@ -251,7 +259,7 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 				if sw, ok := b.Renderable.(*render.Switch); ok {
 					suffix, _ := b.Metadata("switch-suffix")
 					//nolint:errcheck
-					sw.Set("onpress" + suffix)
+					sw.Set(stateOnPress + suffix)
 				}
 				return 0
 			}),
@@ -271,7 +279,7 @@ func New(ctx *scene.Context, opts ...Option) *TitleBar {
 					if sw, ok := b.Renderable.(*render.Switch); ok {
 						suffix, _ := b.Metadata("switch-suffix")
 						//nolint:errcheck
-						sw.Set("nohover" + suffix)
+						sw.Set(stateNoHover + suffix)
 					}
 					b.SetMetadata("nofocus", "")
 				}
@@ -450,7 +458,7 @@ func toggleMaximize(ctx *scene.Context, b *entities.Entity) bool {
 		b.SetMetadata("switch-suffix", "")
 		if sw, ok := b.Renderable.(*render.Switch); ok {
 			//nolint:errcheck
-			sw.Set("nohover")
+			sw.Set(stateNoHover)
 		}
 		return false
 	}
@@ -459,7 +467,7 @@ func toggleMaximize(ctx *scene.Context, b *entities.Entity) bool {
 	b.SetMetadata("switch-suffix", "-revert")
 	if sw, ok := b.Renderable.(*render.Switch); ok {
 		//nolint:errcheck
-		sw.Set("nohover-revert")
+		sw.Set(stateNoHoverRevert)
 	}
 	return true
 }
@@ -468,8 +476,8 @@ func SpriteFromShape(sh shape.Shape, w, h int, on, off color.Color) *render.Spri
 	rect := sh.Rect(w, h)
 	rgba := image.NewRGBA(image.Rect(0, 0, len(rect), len(rect[0])))
 	sp := render.NewSprite(0, 0, rgba)
-	for x := 0; x < len(rect); x++ {
-		for y := 0; y < len(rect[0]); y++ {
+	for x := range rect {
+		for y := range len(rect[0]) {
 			if rect[x][y] {
 				sp.Set(x, y, on)
 			} else {
