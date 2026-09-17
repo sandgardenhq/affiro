@@ -113,7 +113,7 @@ const (
 
 const defaultAPIBaseURL = "https://app.affiro.com"
 
-// errHelp is returned when there is no argv at all to read a subcommand from.
+// errHelp is returned when os.Args is empty, leaving no subcommand to read.
 var errHelp = errors.New(helpText)
 
 const helpText = `affiro CLI
