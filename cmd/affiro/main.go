@@ -155,44 +155,84 @@ func checkForUpdate() {
 	fmt.Printf("updated to %s\n", result.LatestVersion)
 }
 
-func run() error {
-	if len(os.Args) == 0 {
-		return errHelp
+// defaultStorageDir is ~/.affiro, created if it is not there yet.
+func defaultStorageDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("locating the home directory: %w", err)
 	}
+	dir := filepath.Join(homeDir, ".affiro")
+	if err := os.MkdirAll(dir, 0777); err != nil {
+		return "", fmt.Errorf("creating %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// recordEvents drains the key monitor into the signature for as long as the process runs,
+// reprinting the signature after each event and copying it on backslash.
+func recordEvents(st *state.State) {
+	for {
+		e, ok := keyMonitor.pop()
+		if !ok {
+			// This is mostly just a problem on windows, as we need a better way to filter out OS events
+			// we don't care about (or pop needs to loop though them)
+			const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
+			time.Sleep(inputRefreshRate)
+			continue
+		}
+		if err := st.Write(e); err != nil {
+			fmt.Println("error writing event: " + err.Error())
+		}
+		sigStr := st.String()
+		if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+			if err := clipboard.WriteAll(sigStr); err != nil {
+				fmt.Println("error writing to clipboard: " + err.Error())
+			}
+		}
+		fmt.Print(sigStr + "\r")
+	}
+}
+
+// cliOptions is what the command line asked for, once the flags that just print and exit
+// have been dealt with.
+type cliOptions struct {
+	storageDir string
+	guiMode    bool
+}
+
+// parseFlags reads the command line. -help and -version are handled here and exit the
+// process rather than coming back as options.
+func parseFlags() (cliOptions, error) {
 	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
 	guiMode := flagSet.Bool("gui", false, "run in gui mode")
 	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
 	showVersion := flagSet.Bool("version", false, "print version and exit")
 	showHelp := flagSet.Bool("help", false, "print help text and exit")
-	err := flagSet.Parse(os.Args[1:])
-	if err != nil {
-		return fmt.Errorf("parsing the command line: %w", err)
+	if err := flagSet.Parse(os.Args[1:]); err != nil {
+		return cliOptions{}, fmt.Errorf("parsing the command line: %w", err)
 	}
 	if *storageDir == "" {
-		homeDir, err := os.UserHomeDir()
+		dir, err := defaultStorageDir()
 		if err != nil {
-			return fmt.Errorf("locating the home directory: %w", err)
+			return cliOptions{}, err
 		}
-		*storageDir = filepath.Join(homeDir, ".affiro")
-		if err := os.MkdirAll(*storageDir, 0777); err != nil {
-			return fmt.Errorf("creating %s: %w", *storageDir, err)
-		}
+		*storageDir = dir
 	}
-	if *showHelp {
+	switch {
+	case *showHelp:
 		fmt.Println(helpText)
 		os.Exit(255)
-		return nil
-	} else if *showVersion {
+	case *showVersion:
 		fmt.Println(fullVersion)
 		checkForUpdate()
 		os.Exit(254)
-		return nil
 	}
-	fmt.Println(`backslash ('\') to copy`)
-	st, err := state.New(context.Background(), *storageDir, time.Hour, apiBaseURL())
-	if err != nil {
-		return fmt.Errorf("opening the signature store: %w", err)
-	}
+	return cliOptions{storageDir: *storageDir, guiMode: *guiMode}, nil
+}
+
+// startBackground kicks off the work that runs for as long as the process does: flushing the
+// signature to disk, draining key events into it, and stopping the monitor on a signal.
+func startBackground(st *state.State) {
 	const storageFlushRate = 30 * time.Second // TODO: make user configurable
 	go func() {
 		for range time.After(storageFlushRate) {
@@ -202,29 +242,7 @@ func run() error {
 		}
 	}()
 	// TODO: library utlity for this:
-	go func() {
-		for {
-			e, ok := keyMonitor.pop()
-			if !ok {
-				// This is mostly just a problem on windows, as we need a better way to filter out OS events
-				// we don't care about (or pop needs to loop though them)
-				const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
-				time.Sleep(inputRefreshRate)
-				continue
-			}
-			err := st.Write(e)
-			if err != nil {
-				fmt.Println("error writing event: " + err.Error())
-			}
-			sigStr := st.String()
-			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
-				if err := clipboard.WriteAll(sigStr); err != nil {
-					fmt.Println("error writing to clipboard: " + err.Error())
-				}
-			}
-			fmt.Print(sigStr + "\r")
-		}
-	}()
+	go recordEvents(st)
 	c := make(chan os.Signal, 10)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -232,7 +250,23 @@ func run() error {
 		keyMonitor.stop()
 		os.Exit(1)
 	}()
-	if *guiMode {
+}
+
+func run() error {
+	if len(os.Args) == 0 {
+		return errHelp
+	}
+	opts, err := parseFlags()
+	if err != nil {
+		return err
+	}
+	fmt.Println(`backslash ('\') to copy`)
+	st, err := state.New(context.Background(), opts.storageDir, time.Hour, apiBaseURL())
+	if err != nil {
+		return fmt.Errorf("opening the signature store: %w", err)
+	}
+	startBackground(st)
+	if opts.guiMode {
 		return guiMonitor(st)
 	}
 	// todo: make this killable
