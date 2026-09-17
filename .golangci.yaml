@@ -65,6 +65,10 @@ linters:
         - crypto/rand.Read
         - fmt.Fprintf
         - fmt.Fprintln
+    exhaustive:
+      # A default that handles everything else is the point of these switches; the enum here
+      # is every key on the keyboard.
+      default-signifies-exhaustive: true
     govet:
       enable-all: true
       # Every hit is an inner-scope err in a block that returns straight away, or a
@@ -116,6 +120,10 @@ linters:
       # constant would leave the test asserting a constant against itself.
       - linters:
           - goconst
+        path: (.+)_test.go
+      # A test's branches are the cases it covers, which is what it is for.
+      - linters:
+          - cyclop
         path: (.+)_test.go
       # gosec judges the security posture of what ships. A test picking its inputs from
       # math/rand, or writing a fixture the test binary then has to read back, is neither.

@@ -39,41 +39,51 @@ func keysymRune(keysym uint32) rune {
 }
 
 func (t *KeysymTable) Lookup(detail uint8, state uint16, numLockMod uint16) (rune, key.Code) {
-	// The key event's rune depends on whether the shift key is down.
 	unshifted := keysymRune(t[detail][0])
-	r := unshifted
+	return codeFor(unshifted, t.shiftedRune(detail, unshifted, state, numLockMod), state)
+}
+
+// shiftedRune picks between a key's unshifted and shifted symbol for the modifier state the
+// event carried.
+func (t *KeysymTable) shiftedRune(detail uint8, unshifted rune, state uint16, numLockMod uint16) rune {
 	if state&numLockMod != 0 && isKeypad(t[detail][1]) {
 		if state&ShiftMask == 0 {
-			r = keysymRune(t[detail][1])
+			return keysymRune(t[detail][1])
 		}
-	} else if state&ShiftMask != 0 {
-		r = keysymRune(t[detail][1])
+		return unshifted
+	}
+	if state&ShiftMask != 0 {
 		// In X11, a zero keysym when shift is down means to use what the
 		// keysym is when shift is up.
-		if r == 0 {
-			r = unshifted
+		if r := keysymRune(t[detail][1]); r != 0 {
+			return r
 		}
 	}
+	return unshifted
+}
 
-	// The key event's code is independent of whether the shift key is down.
-	var c key.Code
-	if 0 <= unshifted && unshifted < 0x80 {
-		c = asciiKeycodes[unshifted]
+// codeFor resolves a key's code, which does not depend on shift, and finishes the rune: caps
+// lock upper-cases it, and a keypad or non-Unicode key overrides it outright.
+func codeFor(unshifted, r rune, state uint16) (rune, key.Code) {
+	switch {
+	case 0 <= unshifted && unshifted < 0x80:
 		if state&LockMask != 0 {
 			r = unicode.ToUpper(r)
 		}
-	} else if kk, isKeypad := keypadKeysyms[r]; isKeypad {
-		r, c = kk.rune, kk.code
-	} else if nuk := nonUnicodeKeycodes[unshifted]; nuk != key.CodeUnknown {
-		r, c = -1, nuk
-	} else {
+		return r, asciiKeycodes[unshifted]
+	default:
+		if kk, isKeypad := keypadKeysyms[r]; isKeypad {
+			return kk.rune, kk.code
+		}
+		if nuk := nonUnicodeKeycodes[unshifted]; nuk != key.CodeUnknown {
+			return -1, nuk
+		}
 		r = keysymCodePoints[r]
 		if state&LockMask != 0 {
 			r = unicode.ToUpper(r)
 		}
+		return r, key.CodeUnknown
 	}
-
-	return r, c
 }
 
 func isKeypad(keysym uint32) bool {
