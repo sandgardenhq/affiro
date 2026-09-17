@@ -1117,203 +1117,218 @@ func ActiveSwitchBinding(k string) func(b *entities.Entity, _ *mouse.Event) even
 var pageChangeEvent = event.RegisterEvent[PageName]()
 
 func drawSignatureViewSection(ctx *scene.Context, st *state.State, mainContentOffset float64, charCount *int, darkMode bool) {
-	{
-		signatureLabelText := fonts.get(fontNameLabel).NewText("//  SIGNATURE", mainContentOffset, 55*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(signatureLabelText, 0, 1)
-
-		sigViewColor := colors.OffWhite
-		if darkMode {
-			sigViewColor = colors.GreenBlack
-		}
-		signatureViewBox := btn.New(ctx,
-			btn.Layers(0, 0),
-			btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
-			btn.Width(326*pixelMagnifier),
-			btn.Height(42*pixelMagnifier),
-			btn.Color(sigViewColor),
-			btn.Pos(mainContentOffset, 78*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-			btn.Font(fonts.get(fontNameSignature)),
-			btn.TextStringer(stringers.Elipsis{Stringer: st, Limit: 30}),
-		)
-		// TODO: fix in oak; use explicit children
-		for _, c := range signatureViewBox.Children {
-			c.ShiftPos(15*pixelMagnifier, 12*pixelMagnifier)
-		}
-	}
-
-	{
-		sigDetailText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
-			return fmt.Sprintf("%d chars · keystroke-derived · resets every hour", *charCount) // TODO: configurable reset time
-		}), mainContentOffset, 130*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(sigDetailText, 0, 1)
-	}
-
+	drawSignatureBox(ctx, st, mainContentOffset, darkMode)
+	drawSignatureDetail(ctx, mainContentOffset, charCount)
 	if st.AuthToken != "" {
-		var uploadButton *entities.Entity
-		uploadW := 108 * pixelMagnifier
-		uploadH := 42 * pixelMagnifier
-		uploadX := mainContentOffset
-		copyComponentsXShift := 35 * pixelMagnifier
-		copyIconXShift := 15 * pixelMagnifier
-		overlayOpts := btn.And(
-			btn.Layers(),
-			btn.Width(uploadW),
-			btn.Height(uploadH),
-			btn.Mod(wideCutRound(darkMode)),
-		)
-
-		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
-		copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
-			stateHover:   hoverBox.Renderable.(*render.Sprite),
-			statePress:   pressBox.Renderable.(*render.Sprite),
-		})
-
-		uploadButton = btn.New(ctx,
-			btn.Layers(0, 0),
-			btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
-			btn.Width(uploadW),
-			btn.Height(uploadH),
-			btn.Renderable(copySwitch),
-			btn.Pos(uploadX, 166*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-			btn.Font(fonts.get(fontNameCopy)),
-			btn.Text("Sign Doc"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				err := browser.OpenURL(st.RemoteHost + "/upload-document?signature=" + st.String())
-				if err != nil {
-					fmt.Println("error opening browser to upload document:", err)
-				}
-				return 0
-			}),
-			btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
-		)
-		copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "upload.svg"), 14*pixelMagnifier, 14*pixelMagnifier, Iff(darkMode, colors.HexBlack, "#ffffff"))
-		copyIcon.SetPos(uploadButton.X()+copyIconXShift, uploadButton.Y()+15*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(copyIcon, 0, 2)
-		for _, c := range uploadButton.Children {
-			c.ShiftPos(copyComponentsXShift, 13*pixelMagnifier)
-		}
+		drawUploadButton(ctx, st, mainContentOffset, darkMode)
 	}
+	drawCopyButton(ctx, st, mainContentOffset, darkMode)
+	drawResetButton(ctx, st, mainContentOffset, darkMode)
+}
 
+// drawSignatureBox draws the label and the boxed, elided signature under it.
+func drawSignatureBox(ctx *scene.Context, st *state.State, mainContentOffset float64, darkMode bool) {
+	signatureLabelText := fonts.get(fontNameLabel).NewText("//  SIGNATURE", mainContentOffset, 55*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(signatureLabelText, 0, 1)
+
+	sigViewColor := colors.OffWhite
+	if darkMode {
+		sigViewColor = colors.GreenBlack
+	}
+	signatureViewBox := btn.New(ctx,
+		btn.Layers(0, 0),
+		btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
+		btn.Width(326*pixelMagnifier),
+		btn.Height(42*pixelMagnifier),
+		btn.Color(sigViewColor),
+		btn.Pos(mainContentOffset, 78*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+		btn.Font(fonts.get(fontNameSignature)),
+		btn.TextStringer(stringers.Elipsis{Stringer: st, Limit: 30}),
+	)
+	// TODO: fix in oak; use explicit children
+	for _, c := range signatureViewBox.Children {
+		c.ShiftPos(15*pixelMagnifier, 12*pixelMagnifier)
+	}
+}
+
+// drawSignatureDetail draws the line under the signature counting characters so far.
+func drawSignatureDetail(ctx *scene.Context, mainContentOffset float64, charCount *int) {
+	sigDetailText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
+		return fmt.Sprintf("%d chars · keystroke-derived · resets every hour", *charCount) // TODO: configurable reset time
+	}), mainContentOffset, 130*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(sigDetailText, 0, 1)
+}
+
+// drawUploadButton draws the button that sends the signature to the API. It only exists once
+// the user has logged in.
+func drawUploadButton(ctx *scene.Context, st *state.State, mainContentOffset float64, darkMode bool) {
+	var uploadButton *entities.Entity
+	uploadW := 108 * pixelMagnifier
+	uploadH := 42 * pixelMagnifier
+	uploadX := mainContentOffset
+	copyComponentsXShift := 35 * pixelMagnifier
+	copyIconXShift := 15 * pixelMagnifier
+	overlayOpts := btn.And(
+		btn.Layers(),
+		btn.Width(uploadW),
+		btn.Height(uploadH),
+		btn.Mod(wideCutRound(darkMode)),
+	)
+
+	unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
+	copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+		stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+		stateHover:   hoverBox.Renderable.(*render.Sprite),
+		statePress:   pressBox.Renderable.(*render.Sprite),
+	})
+
+	uploadButton = btn.New(ctx,
+		btn.Layers(0, 0),
+		btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
+		btn.Width(uploadW),
+		btn.Height(uploadH),
+		btn.Renderable(copySwitch),
+		btn.Pos(uploadX, 166*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+		btn.Font(fonts.get(fontNameCopy)),
+		btn.Text("Sign Doc"),
+		btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+		btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+		btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			err := browser.OpenURL(st.RemoteHost + "/upload-document?signature=" + st.String())
+			if err != nil {
+				fmt.Println("error opening browser to upload document:", err)
+			}
+			return 0
+		}),
+		btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
+	)
+	copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "upload.svg"), 14*pixelMagnifier, 14*pixelMagnifier, Iff(darkMode, colors.HexBlack, "#ffffff"))
+	copyIcon.SetPos(uploadButton.X()+copyIconXShift, uploadButton.Y()+15*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(copyIcon, 0, 2)
+	for _, c := range uploadButton.Children {
+		c.ShiftPos(copyComponentsXShift, 13*pixelMagnifier)
+	}
+}
+
+// drawCopyButton draws the button that copies the signature, which widens to fill the row
+// when there is no upload button beside it.
+func drawCopyButton(ctx *scene.Context, st *state.State, mainContentOffset float64, darkMode bool) {
 	var copyButton *entities.Entity
-	{
-		copyW := 108 * pixelMagnifier
-		copyH := 42 * pixelMagnifier
-		copyX := mainContentOffset + 120*pixelMagnifier
-		copyComponentsXShift := 48 * pixelMagnifier
-		copyIconXShift := 28 * pixelMagnifier
-		if st.AuthToken == "" {
-			copyW = 228 * pixelMagnifier
-			copyX = mainContentOffset
-			copyComponentsXShift = 108 * pixelMagnifier
-			copyIconXShift = 90 * pixelMagnifier
-		}
-		overlayOpts := btn.And(
-			btn.Layers(),
-			btn.Width(copyW),
-			btn.Height(copyH),
-			btn.Mod(wideCutRound(darkMode)),
-		)
-
-		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
-		copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
-			stateHover:   hoverBox.Renderable.(*render.Sprite),
-			statePress:   pressBox.Renderable.(*render.Sprite),
-		})
-
-		copyButton = btn.New(ctx,
-			btn.Layers(0, 0),
-			btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
-			btn.Width(copyW),
-			btn.Height(copyH),
-			btn.Renderable(copySwitch),
-			btn.Pos(copyX, 166*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-			btn.Font(fonts.get(fontNameCopy)),
-			btn.Text("Copy"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				if err := clipboard.WriteAll(st.String()); err != nil {
-					fmt.Println(err)
-				}
-				return 0
-			}),
-			btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
-		)
-		copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "copy.svg"), 14*pixelMagnifier, 14*pixelMagnifier, Iff(darkMode, colors.HexBlack, "#ffffff"))
-		copyIcon.SetPos(copyButton.X()+copyIconXShift, copyButton.Y()+15*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(copyIcon, 0, 2)
-		for _, c := range copyButton.Children {
-			c.ShiftPos(copyComponentsXShift, 13*pixelMagnifier)
-		}
+	copyW := 108 * pixelMagnifier
+	copyH := 42 * pixelMagnifier
+	copyX := mainContentOffset + 120*pixelMagnifier
+	copyComponentsXShift := 48 * pixelMagnifier
+	copyIconXShift := 28 * pixelMagnifier
+	if st.AuthToken == "" {
+		copyW = 228 * pixelMagnifier
+		copyX = mainContentOffset
+		copyComponentsXShift = 108 * pixelMagnifier
+		copyIconXShift = 90 * pixelMagnifier
 	}
+	overlayOpts := btn.And(
+		btn.Layers(),
+		btn.Width(copyW),
+		btn.Height(copyH),
+		btn.Mod(wideCutRound(darkMode)),
+	)
 
-	{
-		overlayOpts := btn.And(
-			btn.Layers(),
-			btn.Width(85*pixelMagnifier),
-			btn.Height(42*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-		)
+	unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.Turquoise))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkTurquoise))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerTurquoise))
+	copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+		stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+		stateHover:   hoverBox.Renderable.(*render.Sprite),
+		statePress:   pressBox.Renderable.(*render.Sprite),
+	})
 
-		unhoverBox := btn.New(ctx, overlayOpts, btn.Color(Iff(darkMode, colors.Black, colors.White)))
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffOffOffWhite))
-		resetSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-			stateUnhover: unhoverBox.Renderable.(*render.Sprite),
-			stateHover:   hoverBox.Renderable.(*render.Sprite),
-			statePress:   pressBox.Renderable.(*render.Sprite),
-		})
+	copyButton = btn.New(ctx,
+		btn.Layers(0, 0),
+		btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
+		btn.Width(copyW),
+		btn.Height(copyH),
+		btn.Renderable(copySwitch),
+		btn.Pos(copyX, 166*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+		btn.Font(fonts.get(fontNameCopy)),
+		btn.Text("Copy"),
+		btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+		btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+		btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			if err := clipboard.WriteAll(st.String()); err != nil {
+				fmt.Println(err)
+			}
+			return 0
+		}),
+		btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
+	)
+	copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "copy.svg"), 14*pixelMagnifier, 14*pixelMagnifier, Iff(darkMode, colors.HexBlack, "#ffffff"))
+	copyIcon.SetPos(copyButton.X()+copyIconXShift, copyButton.Y()+15*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(copyIcon, 0, 2)
+	for _, c := range copyButton.Children {
+		c.ShiftPos(copyComponentsXShift, 13*pixelMagnifier)
+	}
+}
 
-		resetButton := btn.New(ctx,
-			btn.Layers(0, 0),
-			btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
-			btn.Width(85*pixelMagnifier),
-			btn.Height(42*pixelMagnifier),
-			btn.Renderable(resetSwitch),
-			btn.Pos(mainContentOffset+(240*pixelMagnifier), 166*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-			btn.Font(fonts.get(fontNameReset)),
-			btn.Text("Reset"),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-			btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
-			btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				newSig := asigx.New()
-				err := st.Reset(newSig)
-				if err != nil {
-					fmt.Println(err)
-				}
-				return 0
-			}),
-			btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
-		)
-		resetIcon := oakx.LoadSVG(imagesFS, path.Join("images", "rotate-cw.svg"), 14*pixelMagnifier, 14*pixelMagnifier, colors.HexDarkGray)
-		resetIcon.SetPos(resetButton.X()+17*pixelMagnifier, resetButton.Y()+15*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(resetIcon, 0, 2)
-		for _, c := range resetButton.Children {
-			c.ShiftPos(36*pixelMagnifier, 13*pixelMagnifier)
-		}
+// drawResetButton draws the button that starts a fresh signature.
+func drawResetButton(ctx *scene.Context, st *state.State, mainContentOffset float64, darkMode bool) {
+	overlayOpts := btn.And(
+		btn.Layers(),
+		btn.Width(85*pixelMagnifier),
+		btn.Height(42*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+	)
+
+	unhoverBox := btn.New(ctx, overlayOpts, btn.Color(Iff(darkMode, colors.Black, colors.White)))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffOffOffWhite))
+	resetSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+		stateUnhover: unhoverBox.Renderable.(*render.Sprite),
+		stateHover:   hoverBox.Renderable.(*render.Sprite),
+		statePress:   pressBox.Renderable.(*render.Sprite),
+	})
+
+	resetButton := btn.New(ctx,
+		btn.Layers(0, 0),
+		btn.TxtOff(15*pixelMagnifier, 10*pixelMagnifier),
+		btn.Width(85*pixelMagnifier),
+		btn.Height(42*pixelMagnifier),
+		btn.Renderable(resetSwitch),
+		btn.Pos(mainContentOffset+(240*pixelMagnifier), 166*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+		btn.Font(fonts.get(fontNameReset)),
+		btn.Text("Reset"),
+		btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+		btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+		btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			newSig := asigx.New()
+			err := st.Reset(newSig)
+			if err != nil {
+				fmt.Println(err)
+			}
+			return 0
+		}),
+		btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
+	)
+	resetIcon := oakx.LoadSVG(imagesFS, path.Join("images", "rotate-cw.svg"), 14*pixelMagnifier, 14*pixelMagnifier, colors.HexDarkGray)
+	resetIcon.SetPos(resetButton.X()+17*pixelMagnifier, resetButton.Y()+15*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(resetIcon, 0, 2)
+	for _, c := range resetButton.Children {
+		c.ShiftPos(36*pixelMagnifier, 13*pixelMagnifier)
 	}
 }
 
