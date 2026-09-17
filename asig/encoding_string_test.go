@@ -30,9 +30,9 @@ func TestErrorTypes(t *testing.T) {
 func TestParseString(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
-		str    string
 		expect *Asig
 		check  func(t testing.TB, err error)
+		str    string
 	}
 	tcs := []testCase{
 		{
@@ -115,8 +115,8 @@ func TestParseString(t *testing.T) {
 func TestStringEncoding(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
-		name string
 		sig  *Asig
+		name string
 	}
 	tcs := []testCase{
 		{

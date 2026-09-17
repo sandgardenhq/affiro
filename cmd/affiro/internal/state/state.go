@@ -16,19 +16,18 @@ import (
 )
 
 type State struct {
-	mu         sync.Mutex
-	dir        string
-	sig        *asigx.Asig
-	cur        *os.File
-	AuthToken  string
-	AuthedAs   string
-	RemoteHost string
-
-	idleTimeout   time.Duration
-	resetDuration time.Duration
 	ResetAt       time.Time
 	lastEventAt   time.Time
 	StartTime     time.Time
+	sig           *asigx.Asig
+	cur           *os.File
+	dir           string
+	AuthToken     string
+	AuthedAs      string
+	RemoteHost    string
+	idleTimeout   time.Duration
+	resetDuration time.Duration
+	mu            sync.Mutex
 }
 
 func New(ctx context.Context, dir string, resetDuration time.Duration, host string) (*State, error) {

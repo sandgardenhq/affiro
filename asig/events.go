@@ -15,8 +15,8 @@ func (MouseUpEvent) asigEvent() {}
 // paired without repeats
 
 type KeyDownEvent struct {
-	Key            key.Code
 	String         string
+	Key            key.Code
 	ControlPressed bool
 	SpecialPressed bool
 	ShiftPressed   bool

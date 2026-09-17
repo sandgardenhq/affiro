@@ -62,8 +62,8 @@ var showUnfinishedPages bool
 var keyMonitor monitorHolder
 
 type monitorHolder struct {
-	mu  sync.Mutex
 	mon keylog.Monitor
+	mu  sync.Mutex
 }
 
 func (h *monitorHolder) set(m keylog.Monitor) {
@@ -375,9 +375,9 @@ const (
 )
 
 type viewBarButton struct {
+	viewportHeight func() int
 	pageName       PageName
 	iconPath       string
-	viewportHeight func() int
 	unfinished     bool
 }
 
@@ -1023,9 +1023,9 @@ const (
 )
 
 type fontGroup struct {
-	darkMode       bool
 	lightModeFonts map[fontName]*render.Font
 	darkModeFonts  map[fontName]*render.Font
+	darkMode       bool
 }
 
 func (fg fontGroup) get(name fontName) *render.Font {
@@ -1369,10 +1369,10 @@ func Iff[T any](darkMode bool, a, b T) T {
 }
 
 type signalVolumeSprite struct {
+	barColors [5]color.Color
 	*render.Sprite
-	totalActions int
 	thresholds   [4]int
-	barColors    [5]color.Color
+	totalActions int
 }
 
 func NewSignalVolumeSprite(x, y float64, w, h int) *signalVolumeSprite {

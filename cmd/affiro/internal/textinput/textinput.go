@@ -17,7 +17,9 @@ import (
 
 // TextInput provides a nicer way to handle input of text
 // Notably it creates a blinking input cursor
-type TextInput struct {
+// Fields are grouped by what they belong to rather than packed by size: one TextInput is
+// built per input, so the bytes are not worth scattering the locks away from what they guard.
+type TextInput struct { //nolint:govet // fieldalignment
 	*entities.Entity
 	ctx *scene.Context
 

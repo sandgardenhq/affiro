@@ -34,14 +34,16 @@ const (
 
 type TitleBar struct {
 	lastPressAt        time.Time
-	draggingStartPos   floatgeom.Point2
-	draggingWindow     bool
 	buttons            map[Button]*entities.Entity
+	draggingStartPos   floatgeom.Point2
 	startingDimensions intgeom.Point2
+	draggingWindow     bool
 	maximized          bool
 }
 
-type Constructor struct {
+// Fields are grouped by what they configure rather than packed by size; one Constructor
+// describes one window.
+type Constructor struct { //nolint:govet // fieldalignment
 	Color          color.Color
 	HighlightColor color.Color
 	MouseDownColor color.Color

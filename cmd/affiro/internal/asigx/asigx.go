@@ -11,11 +11,10 @@ import (
 
 type Asig struct {
 	*asig.Asig
-
-	mu              sync.Mutex
 	FirstCharacters string
 	TotalActions    int
 	CharLimit       int
+	mu              sync.Mutex
 }
 
 func New() *Asig {

@@ -13,10 +13,10 @@ func TestLookupKeyCode(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		code     uint16
 		want     key.Code
-		mods     modifierState
 		wantRune rune
+		code     uint16
+		mods     modifierState
 	}{
 		{name: "letterA", code: keyA, want: key.CodeA, wantRune: 'a'},
 		{name: "letterAShift", code: keyA, want: key.CodeA, wantRune: 'A', mods: modifierState{leftShift: true}},

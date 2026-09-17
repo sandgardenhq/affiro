@@ -21,8 +21,8 @@ import (
 type CheckResult struct {
 	CurrentVersion  string `json:"currentVersion"`
 	LatestVersion   string `json:"latestVersion"`
-	UpdateAvailable bool   `json:"updateAvailable"`
 	DownloadPath    string `json:"downloadPath"`
+	UpdateAvailable bool   `json:"updateAvailable"`
 }
 
 // Check asks the playground API at baseURL whether currentVersion is out of date for this
