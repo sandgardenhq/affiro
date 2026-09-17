@@ -278,6 +278,18 @@ func run() error {
 	select {}
 }
 
+// titleBarHeight is the height of the window's own title bar.
+const titleBarHeight = 40 * pixelMagnifier
+
+// Sizing of the buttons running down the view bar.
+const (
+	viewBarButtonYMargin   = 5 * pixelMagnifier
+	viewBarButtonXMargin   = 5 * pixelMagnifier
+	viewBarButtonWidth     = 36 * pixelMagnifier
+	viewBarButtonHeight    = 36 * pixelMagnifier
+	viewBarButtonInnerSize = 18 * pixelMagnifier
+)
+
 const pixelScale = 0.5
 const pixelMagnifier = 1 / pixelScale
 const windowWidth = 420 * pixelMagnifier
@@ -504,117 +516,7 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 	// })
 
 	// titleBar:
-	const titleBarHeight = 40 * pixelMagnifier
-	{
-		initTitlebar(ctx, titleBarHeight, darkMode)
-		initLogo(ctx, darkMode)
-		initVersionText(ctx)
-
-		// title bar buttons:
-		const titleBarButtonSize = 21 * pixelMagnifier
-		const titleBarButtonInnerSize = 16 * pixelMagnifier
-
-		modeSwitchSpritePath := path.Join("images", "moon.svg")
-		if darkMode {
-			modeSwitchSpritePath = path.Join("images", "sun.svg")
-		}
-		modeSwitchSprite := oakx.LoadSVG(imagesFS, modeSwitchSpritePath, titleBarButtonInnerSize, titleBarButtonInnerSize, colors.HexLightGray)
-		modeSwitchSprite.SetPos(4*pixelMagnifier, 4*pixelMagnifier)
-
-		overlayOpts := btn.And(
-			btn.Layers(), // set layers to nothing to not draw the button
-			btn.Width(titleBarButtonSize),
-			btn.Height(titleBarButtonSize),
-			btn.Mod(thinCutRound(darkMode)),
-		)
-
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
-		modeSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-			stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), modeSwitchSprite),
-			stateUnhover: modeSwitchSprite,
-			statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), modeSwitchSprite),
-		})
-		x := windowWidth - ((titleBarButtonSize * 2) + 28*pixelMagnifier)
-		if keylogx.ButtonStyle != titlebar.ButtonStyleOSX {
-			x -= titleBarHeight * 2
-		}
-		y := 8 * pixelMagnifier
-		btn.New(ctx,
-			btn.Layers(1, 1),
-			btn.Renderable(modeSwitch),
-			btn.Width(titleBarButtonSize),
-			btn.Height(titleBarButtonSize),
-			btn.Pos(x, y),
-			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-			btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
-			btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-			btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-				globalDarkMode = !globalDarkMode
-				if globalDarkMode {
-					ctx.Window.(*oak.Window).SetColorBackground(image.NewUniform(colors.SlightGreenBlack))
-				} else {
-					ctx.Window.(*oak.Window).SetColorBackground(image.NewUniform(colors.White))
-				}
-				ctx.Window.GoToScene(homeSceneName) // restart scene
-				return 0
-			}),
-		)
-
-		x += titleBarButtonSize + 15*pixelMagnifier
-
-		loggedInOpts := []btn.Option{}
-		if st.AuthToken == "" {
-			loginIcon := oakx.LoadSVG(imagesFS, path.Join("images", "log-in.svg"), titleBarButtonInnerSize, titleBarButtonInnerSize, colors.HexLightGray)
-			loginIcon.SetPos(4*pixelMagnifier, 4*pixelMagnifier)
-
-			hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
-			pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
-			loginSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-				stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), loginIcon),
-				stateUnhover: loginIcon,
-				statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), loginIcon),
-			})
-
-			loggedInOpts = append(loggedInOpts,
-				btn.Renderable(loginSwitch),
-				btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-				btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
-				btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-				btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-					go func() {
-						token, err := auth.Authenticate(ctx, st.RemoteHost)
-						if err != nil {
-							fmt.Println("auth failed: " + err.Error()) // TODO: visualize
-						}
-						st.AuthToken = token
-						st.AuthedAs = "PS"                  // TODO: make real
-						ctx.Window.GoToScene(homeSceneName) // restart scene
-					}()
-					return 0
-				}),
-			)
-		} else {
-			loggedInOpts = append(loggedInOpts,
-				btn.TextPtr(&st.AuthedAs),
-				btn.Font(fonts.get(fontNameLoggedIn)),
-				btn.Color(Iff(darkMode, colors.GreenBlack, colors.LightTurquoise)),
-				btn.Mod(thinCutRound(darkMode)),
-			)
-		}
-		loggedInIcon := btn.New(ctx,
-			btn.And(loggedInOpts...),
-			btn.Height(titleBarButtonSize),
-			btn.Width(titleBarButtonSize),
-			btn.Pos(x, y),
-			btn.Layers(1, 1),
-		)
-		for _, c := range loggedInIcon.Children {
-			c.ShiftPos(5*pixelMagnifier, 5*pixelMagnifier)
-		}
-	}
+	drawTitleBar(ctx, st, darkMode)
 
 	// view/sideBar:
 	const viewBarWidth = 50 * pixelMagnifier
@@ -631,12 +533,6 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 		ctx.Draw(viewBarSeparator, 1, 2)
 	}
 
-	const viewBarButtonYMargin = 5 * pixelMagnifier
-	const viewBarButtonXMargin = 5 * pixelMagnifier
-	const viewBarButtonWidth = 36 * pixelMagnifier
-	const viewBarButtonHeight = 36 * pixelMagnifier
-	const viewBarButtonInnerSize = 18 * pixelMagnifier
-
 	var nextViewBarY = viewBar.Y() + (12 * pixelMagnifier)
 	var vbButtons = []viewBarButton{
 		{
@@ -650,106 +546,13 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 		},
 	}
 
+	cursor := &viewBarCursor{x: viewBar.X(), y: nextViewBarY}
 	for _, vb := range vbButtons {
-		sprite := oakx.LoadSVG(imagesFS, path.Join("images", vb.iconPath), viewBarButtonInnerSize, viewBarButtonInnerSize, colors.HexDarkGray)
-		sprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
-
-		overlayOpts := btn.And(
-			btn.Layers(), // set layers to nothing to not draw the button
-			btn.Width(viewBarButtonWidth),
-			btn.Height(viewBarButtonHeight),
-			btn.Mod(thinCutRound(darkMode)),
-		)
-
-		activeBox := btn.New(ctx, overlayOpts, btn.Color(colors.LightTurquoise))
-		activeHoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.LighterTurquoise))
-		activePressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffTurquoise))
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
-		swMap := map[string]render.Modifiable{
-			stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), sprite),
-			stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), sprite),
-			stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), sprite),
-			stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), sprite),
-			stateUnhover:       sprite,
-			statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), sprite),
-		}
-		starting := stateUnhover
-		if page == vb.pageName {
-			starting = stateActiveUnhover
-		}
-		layers := []int{1, 1}
-		if vb.unfinished && !showUnfinishedPages {
-			layers = []int{}
-		}
-		icon := btn.New(ctx,
-			btn.Layers(layers...),
-			btn.Renderable(render.NewSwitch(starting, swMap)),
-			btn.Width(viewBarButtonWidth),
-			btn.Height(viewBarButtonHeight),
-			btn.Pos(viewBar.X()+viewBarButtonXMargin, nextViewBarY),
-			btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
-			btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
-			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
-			btn.Binding(mouse.ClickOn, viewButtonResize(ctx, &page, vb)),
-			btn.Binding(pageChangeEvent, viewButtonActiveSwitch(vb)),
-		)
-		nextViewBarY = icon.Bottom() + viewBarButtonYMargin
+		drawViewBarButton(ctx, vb, cursor, &page, darkMode)
 	}
 
 	if showUnfinishedPages {
-		settingsSprite, err := render.LoadSprite(path.Join("images", "settings.png"))
-		if err != nil {
-			panic(err)
-		}
-		settingsSprite = settingsSprite.Modify(mod.Resize(viewBarButtonInnerSize, viewBarButtonInnerSize, mod.LanczosResampling)).(*render.Sprite)
-		settingsSprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
-
-		overlayOpts := btn.And(
-			btn.Layers(), // set layers to nothing to not draw the button
-			btn.Width(viewBarButtonWidth),
-			btn.Height(viewBarButtonHeight),
-			btn.Mod(thinCutRound(darkMode)),
-		)
-
-		activeBox := btn.New(ctx, overlayOpts, btn.Color(colors.LightTurquoise))
-		activeHoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.LighterTurquoise))
-		activePressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffTurquoise))
-		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
-		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
-		swMap := map[string]render.Modifiable{
-			stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), settingsSprite),
-			stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), settingsSprite),
-			stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), settingsSprite),
-			stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), settingsSprite),
-			stateUnhover:       settingsSprite,
-			statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), settingsSprite),
-		}
-		starting := stateUnhover
-		if page == PageNameSettings {
-			starting = stateActiveUnhover
-		}
-
-		icon := btn.New(ctx,
-			btn.Layers(1, 1),
-			btn.Renderable(render.NewSwitch(starting, swMap)),
-			btn.Width(viewBarButtonWidth),
-			btn.Height(viewBarButtonHeight),
-			btn.Pos(viewBar.X()+viewBarButtonXMargin, float64(h)-(viewBarButtonHeight+(15*pixelMagnifier))),
-			btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
-			btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
-			btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
-			btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
-			btn.Binding(mouse.ClickOn, viewButtonResize(ctx, &page, viewBarButton{pageName: PageNameSettings})),
-			btn.Binding(pageChangeEvent, viewButtonActiveSwitch(viewBarButton{pageName: PageNameSettings})),
-			btn.Binding(pageChangeEvent, func(b *entities.Entity, p PageName) event.Response {
-				h := windowHeights[p]
-				b.SetPos(floatgeom.Point2{viewBar.X() + viewBarButtonXMargin, float64(h) - (viewBarButtonHeight + (15 * pixelMagnifier))})
-				return 0
-			}),
-		)
-		_ = icon
+		drawUnfinishedNav(ctx, viewBar, h, page, darkMode)
 	}
 
 	qrCodeSceneX := windowPositions[PageNameQRCode]
@@ -759,273 +562,20 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 	mainContentWidth := windowWidth - viewBarWidth
 	mainContentCenterX := mainContentWidth / 2
 
-	{
-		bottomSepY := (231) * pixelMagnifier
-		{
-			bottomSeparator := render.NewColoredLine(mainContentOffset, bottomSepY, mainContentOffset+(320*pixelMagnifier), bottomSepY, render.IdentityColorer(Iff(darkMode, colors.DarkestGray, colors.OffOffOffOffWhite)), 0)
-			//nolint:errcheck
-			ctx.Draw(bottomSeparator, 0, 2)
-		}
-
-		sessionInfoText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
-			return "session started " + st.StartTime.Format("3:04 PM")
-		}), mainContentOffset, bottomSepY+(10*pixelMagnifier))
-		//nolint:errcheck
-		ctx.Draw(sessionInfoText, 0, 2)
-
-		{
-			// this doesn't do anything it's just a circle
-			resetCircle := oakx.NewFilledCircle(colors.Turquoise, 3*pixelMagnifier, 4*pixelMagnifier)
-			resetCircle.SetPos(mainContentOffset+(190*pixelMagnifier), bottomSepY+(15*pixelMagnifier))
-			//nolint:errcheck
-			ctx.Draw(resetCircle, 0, 2)
-		}
-
-		{
-			nextResetText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
-				d := time.Until(st.ResetAt)
-				return fmt.Sprintf("next reset in %d minutes", int(d.Minutes()))
-			}), mainContentOffset+(200*pixelMagnifier), bottomSepY+(10*pixelMagnifier))
-			//nolint:errcheck
-			ctx.Draw(nextResetText, 0, 2)
-		}
-	}
+	drawMainContent(ctx, st, mainContentOffset, darkMode)
 
 	// QR Code page only:
-	{
-		overlayW := 200 * pixelMagnifier
-		overlayH := 210 * pixelMagnifier
-		qrOverlay := btn.New(ctx,
-			btn.Layers(),
-			btn.Color(colors.White),
-			btn.Mod(thinCutRound(darkMode)),
-			btn.Width(overlayW),
-			btn.Height(overlayH),
-		)
-		qrW, qrH := qrCodeSprite.GetDims()
-		qrCodeSprite.SetPos((overlayW-float64(qrW))/2, (overlayH-float64(qrH))/2)
-
-		qrComposite := render.NewCompositeM(
-			qrOverlay.Renderable.(*render.Sprite),
-			qrCodeSprite,
-		)
-		qrComposite.SetPos(mainContentCenterX-(overlayW/2), 236*pixelMagnifier)
-		qrComposite.ShiftX(float64(qrCodeSceneX))
-		//nolint:errcheck
-		ctx.Draw(qrComposite, 0, 2)
-
-		qrInstructions := []string{"Scan to import this signature on", "another device."}
-		yInc := 20
-		for _, inst := range qrInstructions {
-			qrInstructionsSprite := fonts.get(fontNameMain).NewText(inst, qrComposite.X(), qrComposite.Y()+overlayH+float64(yInc))
-			//nolint:errcheck
-			ctx.Draw(qrInstructionsSprite, 0, 2)
-			yInc += 32
-			instW, _ := qrInstructionsSprite.GetDims()
-			qrInstructionsSprite.ShiftX((overlayW - float64(instW)) / 2)
-		}
-	}
+	drawQRCodePage(ctx, qrCodeSprite, qrCodeSceneX, mainContentCenterX, darkMode)
 	// History page only:
-	{
-		historySceneX := float64(windowPositions[PageNameHistory])
-		offsetX := historySceneX + 10*pixelMagnifier
-		offsetY := titleBarHeight
-
-		// TODO: only scroll table don't scroll title or top of table
-		titleSep := renderPageTitle(ctx, "Signature History", offsetX, offsetY, mainContentWidth)
-
-		timeX := offsetX + 15*pixelMagnifier
-		signatureX := offsetX + 140*pixelMagnifier
-
-		timeLabel := fonts.get(fontNameLabel).NewText("TIME", timeX, titleSep.Y()+10*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(timeLabel, 0, 1)
-
-		signatureLabel := fonts.get(fontNameLabel).NewText("TEXT", signatureX, titleSep.Y()+10*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(signatureLabel, 0, 1)
-
-		tableHeaderSep := render.NewColoredLine(historySceneX, timeLabel.Y()+25*pixelMagnifier, historySceneX+mainContentWidth, timeLabel.Y()+25*pixelMagnifier, render.IdentityColorer(colors.OffOffWhite), 1)
-		//nolint:errcheck
-		ctx.Draw(tableHeaderSep, 0, 2)
-
-		recentSignatures, err := st.ListRecent(200)
-		if err != nil {
-			panic(err)
-		}
-		// TODO: when reset happens, reset recentSignatures
-		nextYStart := tableHeaderSep.Y()
-		for _, sig := range recentSignatures {
-			tm := time.Unix(sig.StartSecond, 0)
-			// TODO: bold font
-			relTxt := fonts.get(fontNameMain).NewStringerText(stringers.KindRelativeTime{T: tm}, timeX, nextYStart+10*pixelMagnifier)
-			//nolint:errcheck
-			ctx.Draw(relTxt, 0, 2)
-
-			absTxt := fonts.get(fontNameMain).NewText(tm.Format("Jan _2, 3:04 PM"), timeX, nextYStart+25*pixelMagnifier)
-			//nolint:errcheck
-			ctx.Draw(absTxt, 0, 2)
-
-			tableRowSep := render.NewColoredLine(historySceneX, absTxt.Y()+22*pixelMagnifier, historySceneX+mainContentWidth, absTxt.Y()+22*pixelMagnifier, render.IdentityColorer(colors.OffOffWhite), 1)
-			//nolint:errcheck
-			ctx.Draw(tableRowSep, 0, 2)
-
-			typedTxt := fonts.get(fontNameMain).NewText(sig.FirstCharacters, signatureX, nextYStart+18*pixelMagnifier)
-			//nolint:errcheck
-			ctx.Draw(typedTxt, 0, 2)
-
-			overlayOpts := btn.And(
-				btn.Layers(),
-				btn.Width(25*pixelMagnifier),
-				btn.Height(25*pixelMagnifier),
-				btn.Mod(thinCutRound(darkMode)),
-			)
-
-			unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
-			hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
-			pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffOffOffWhite))
-			copyIconColor := colors.HexLightGray
-			if darkMode {
-				copyIconColor = colors.HexBlack
-			}
-			copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "copy.svg"), 13*pixelMagnifier, 13*pixelMagnifier, copyIconColor)
-			copyIcon.SetPos(7*pixelMagnifier, 7*pixelMagnifier)
-
-			copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
-				stateUnhover: render.NewCompositeM(unhoverBox.Renderable.(*render.Sprite), copyIcon),
-				stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), copyIcon),
-				statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), copyIcon),
-			})
-
-			copyButton := btn.New(ctx, btn.Layers(0, 0),
-				btn.Width(25*pixelMagnifier),
-				btn.Height(25*pixelMagnifier),
-				btn.Renderable(copySwitch),
-				btn.Pos(signatureX+180*pixelMagnifier, nextYStart+12*pixelMagnifier),
-				btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
-				btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
-				btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
-				btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
-				btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
-					if err := clipboard.WriteAll(sig.Asig.String()); err != nil {
-						fmt.Println(err)
-					}
-					return 0
-				}),
-				btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)))
-			for _, c := range copyButton.Children {
-				c.ShiftPos(13*pixelMagnifier, 13*pixelMagnifier)
-			}
-
-			sv := NewSignalVolumeSprite(0, 0, 18*pixelMagnifier, 18*pixelMagnifier)
-			sv.SetActions(sig.TotalActions)
-
-			hoverCh := make(chan struct{})
-			btn.New(ctx, btn.Layers(0, 0),
-				btn.Width(18*pixelMagnifier),
-				btn.Height(18*pixelMagnifier),
-				btn.Renderable(sv),
-				btn.Pos(copyButton.X()-20*pixelMagnifier, copyButton.Y()),
-				btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
-				btn.Binding(mouse.Start, func(b *entities.Entity, _ *mouse.Event) event.Response {
-					go func() {
-						var tooltip *entities.Entity
-						select {
-						case <-hoverCh:
-							return
-						case <-ctx.Done():
-							return
-						case <-time.After(600 * time.Millisecond):
-							ev := mouse.LastEvent
-							tooltip = btn.New(ctx, btn.Layers(1, 2),
-								btn.Pos(ev.X(), ev.Y()-25*pixelMagnifier), // - 35 to render above the mouse itself
-								btn.Width(70*pixelMagnifier),
-								btn.Height(20*pixelMagnifier),
-								btn.Font(fonts.get(fontNameTooltip)),
-								btn.Color(color.RGBA{90, 90, 90, 100}),
-								btn.Text("Actions: "+strconv.Itoa(sig.TotalActions)),
-							)
-						}
-						<-hoverCh
-						for _, child := range tooltip.Children {
-							child.Destroy()
-						}
-						tooltip.Destroy()
-					}()
-					return 0
-				}),
-				btn.Binding(mouse.Stop, func(b *entities.Entity, _ *mouse.Event) event.Response {
-					select {
-					case hoverCh <- struct{}{}:
-					default:
-					}
-					return 0
-				}),
-			)
-			nextYStart += 45 * pixelMagnifier
-		}
-		maxHistoryViewportHeight = int(nextYStart) + 100
-		// TODO: scroll bar?
-	}
+	drawHistoryPage(ctx, st, mainContentWidth, &maxHistoryViewportHeight, darkMode)
 	// TODO:
 	// Scan page only:
 	if showUnfinishedPages {
-		sceneX := float64(windowPositions[PageNameScan])
-		offsetX := sceneX + 24*pixelMagnifier
-		offsetY := titleBarHeight
-		titleSep := renderPageTitle(ctx, "Verify Document", sceneX+10*pixelMagnifier, offsetY, mainContentWidth)
-		_ = titleSep
-
-		labelText := fonts.get(fontNameLabel).NewText("//  DOCUMENT", offsetX, titleSep.Y()+20*pixelMagnifier)
-		//nolint:errcheck
-		ctx.Draw(labelText, 0, 1)
-
-		docTextInput := textinput.New(ctx, textinput.WithDims(
-			mainContentWidth-70*pixelMagnifier,
-			80*pixelMagnifier,
-		),
-			textinput.WithFont(fonts.get(fontNameMain)),
-			textinput.WithPosition(offsetX+20*pixelMagnifier, labelText.Y()+34*pixelMagnifier),
-			textinput.WithBlinkerLayers(0, 3),
-			textinput.WithBlinkerColor(colors.DarkGray),
-		)
-		//nolint:errcheck
-		ctx.Draw(docTextInput.Renderable, 0, 2)
-
-		_ = btn.New(ctx, btn.Layers(0, 0),
-			btn.Width(mainContentWidth-50*pixelMagnifier),
-			btn.Height(90*pixelMagnifier),
-			btn.Color(colors.OffOffOffOffWhite),
-			btn.Pos(offsetX, labelText.Y()+24*pixelMagnifier),
-			btn.Mod(wideCutRound(darkMode)),
-		)
-
-		// backing := render.NewColorBox(int(mainContentWidth-20*pixelMagnifier), 200*pixelMagnifier, colors.DarkGray)
-		// backing.SetPos(offsetX, titleSep.Y()+20)
-		// //nolint:errcheck
-		// ctx.Draw(backing, 0, 1)
-
-		// TODO:
-		// document text area
-		// signature paste area
-		// verify button
-		// reset button
-		// verified pop up section
+		drawScanPage(ctx, mainContentWidth, darkMode)
 	}
 	// Settings page only:
 	if showUnfinishedPages {
-		sceneX := float64(windowPositions[PageNameSettings])
-		offsetX := sceneX + 10*pixelMagnifier
-		offsetY := titleBarHeight
-		titleSep := renderPageTitle(ctx, "Settings", offsetX, offsetY, mainContentWidth)
-		_ = titleSep
-
-		// TODO:
-		// logged in / out section
-		// signature version dropdown
-		// auto reset dropdown
-		// appearance / dark mode dropdown
-		// signout toast
+		drawSettingsPage(ctx, mainContentWidth)
 	}
 	// Auth page / redirect?
 
@@ -1330,6 +880,507 @@ func drawResetButton(ctx *scene.Context, st *state.State, mainContentOffset floa
 	for _, c := range resetButton.Children {
 		c.ShiftPos(36*pixelMagnifier, 13*pixelMagnifier)
 	}
+}
+
+// viewBarCursor is where the next view-bar button goes; drawViewBarButton advances it.
+type viewBarCursor struct {
+	x, y float64
+}
+
+// drawViewBarButton draws one of the buttons running down the view bar.
+func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCursor, page *PageName, darkMode bool) {
+	nextViewBarY := cursor.y
+	sprite := oakx.LoadSVG(imagesFS, path.Join("images", vb.iconPath), viewBarButtonInnerSize, viewBarButtonInnerSize, colors.HexDarkGray)
+	sprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
+
+	overlayOpts := btn.And(
+		btn.Layers(), // set layers to nothing to not draw the button
+		btn.Width(viewBarButtonWidth),
+		btn.Height(viewBarButtonHeight),
+		btn.Mod(thinCutRound(darkMode)),
+	)
+
+	activeBox := btn.New(ctx, overlayOpts, btn.Color(colors.LightTurquoise))
+	activeHoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.LighterTurquoise))
+	activePressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffTurquoise))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
+	swMap := map[string]render.Modifiable{
+		stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), sprite),
+		stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), sprite),
+		stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), sprite),
+		stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), sprite),
+		stateUnhover:       sprite,
+		statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), sprite),
+	}
+	starting := stateUnhover
+	if *page == vb.pageName {
+		starting = stateActiveUnhover
+	}
+	layers := []int{1, 1}
+	if vb.unfinished && !showUnfinishedPages {
+		layers = []int{}
+	}
+	icon := btn.New(ctx,
+		btn.Layers(layers...),
+		btn.Renderable(render.NewSwitch(starting, swMap)),
+		btn.Width(viewBarButtonWidth),
+		btn.Height(viewBarButtonHeight),
+		btn.Pos(cursor.x+viewBarButtonXMargin, nextViewBarY),
+		btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
+		btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
+		btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
+		btn.Binding(mouse.ClickOn, viewButtonResize(ctx, page, vb)),
+		btn.Binding(pageChangeEvent, viewButtonActiveSwitch(vb)),
+	)
+	cursor.y = icon.Bottom() + viewBarButtonYMargin
+}
+
+func drawTitleBar(ctx *scene.Context, st *state.State, darkMode bool) {
+	initTitlebar(ctx, titleBarHeight, darkMode)
+	initLogo(ctx, darkMode)
+	initVersionText(ctx)
+
+	// title bar buttons:
+	const titleBarButtonSize = 21 * pixelMagnifier
+	const titleBarButtonInnerSize = 16 * pixelMagnifier
+
+	modeSwitchSpritePath := path.Join("images", "moon.svg")
+	if darkMode {
+		modeSwitchSpritePath = path.Join("images", "sun.svg")
+	}
+	modeSwitchSprite := oakx.LoadSVG(imagesFS, modeSwitchSpritePath, titleBarButtonInnerSize, titleBarButtonInnerSize, colors.HexLightGray)
+	modeSwitchSprite.SetPos(4*pixelMagnifier, 4*pixelMagnifier)
+
+	overlayOpts := btn.And(
+		btn.Layers(), // set layers to nothing to not draw the button
+		btn.Width(titleBarButtonSize),
+		btn.Height(titleBarButtonSize),
+		btn.Mod(thinCutRound(darkMode)),
+	)
+
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
+	modeSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+		stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), modeSwitchSprite),
+		stateUnhover: modeSwitchSprite,
+		statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), modeSwitchSprite),
+	})
+	x := windowWidth - ((titleBarButtonSize * 2) + 28*pixelMagnifier)
+	if keylogx.ButtonStyle != titlebar.ButtonStyleOSX {
+		x -= titleBarHeight * 2
+	}
+	y := 8 * pixelMagnifier
+	btn.New(ctx,
+		btn.Layers(1, 1),
+		btn.Renderable(modeSwitch),
+		btn.Width(titleBarButtonSize),
+		btn.Height(titleBarButtonSize),
+		btn.Pos(x, y),
+		btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+		btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
+		btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			globalDarkMode = !globalDarkMode
+			if globalDarkMode {
+				ctx.Window.(*oak.Window).SetColorBackground(image.NewUniform(colors.SlightGreenBlack))
+			} else {
+				ctx.Window.(*oak.Window).SetColorBackground(image.NewUniform(colors.White))
+			}
+			ctx.Window.GoToScene(homeSceneName) // restart scene
+			return 0
+		}),
+	)
+
+	x += titleBarButtonSize + 15*pixelMagnifier
+
+	loggedInOpts := []btn.Option{}
+	if st.AuthToken == "" {
+		loginIcon := oakx.LoadSVG(imagesFS, path.Join("images", "log-in.svg"), titleBarButtonInnerSize, titleBarButtonInnerSize, colors.HexLightGray)
+		loginIcon.SetPos(4*pixelMagnifier, 4*pixelMagnifier)
+
+		hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkerGray))
+		pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.DarkGray))
+		loginSwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+			stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), loginIcon),
+			stateUnhover: loginIcon,
+			statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), loginIcon),
+		})
+
+		loggedInOpts = append(loggedInOpts,
+			btn.Renderable(loginSwitch),
+			btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+			btn.Binding(mouse.PressOn, oakx.EntitySwitchBinding(statePress)),
+			btn.Binding(mouse.ReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+			btn.Binding(mouse.ClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+				go func() {
+					token, err := auth.Authenticate(ctx, st.RemoteHost)
+					if err != nil {
+						fmt.Println("auth failed: " + err.Error()) // TODO: visualize
+					}
+					st.AuthToken = token
+					st.AuthedAs = "PS"                  // TODO: make real
+					ctx.Window.GoToScene(homeSceneName) // restart scene
+				}()
+				return 0
+			}),
+		)
+	} else {
+		loggedInOpts = append(loggedInOpts,
+			btn.TextPtr(&st.AuthedAs),
+			btn.Font(fonts.get(fontNameLoggedIn)),
+			btn.Color(Iff(darkMode, colors.GreenBlack, colors.LightTurquoise)),
+			btn.Mod(thinCutRound(darkMode)),
+		)
+	}
+	loggedInIcon := btn.New(ctx,
+		btn.And(loggedInOpts...),
+		btn.Height(titleBarButtonSize),
+		btn.Width(titleBarButtonSize),
+		btn.Pos(x, y),
+		btn.Layers(1, 1),
+	)
+	for _, c := range loggedInIcon.Children {
+		c.ShiftPos(5*pixelMagnifier, 5*pixelMagnifier)
+	}
+}
+
+func drawUnfinishedNav(ctx *scene.Context, viewBar *entities.Entity, h int, page PageName, darkMode bool) {
+	settingsSprite, err := render.LoadSprite(path.Join("images", "settings.png"))
+	if err != nil {
+		panic(err)
+	}
+	settingsSprite = settingsSprite.Modify(mod.Resize(viewBarButtonInnerSize, viewBarButtonInnerSize, mod.LanczosResampling)).(*render.Sprite)
+	settingsSprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
+
+	overlayOpts := btn.And(
+		btn.Layers(), // set layers to nothing to not draw the button
+		btn.Width(viewBarButtonWidth),
+		btn.Height(viewBarButtonHeight),
+		btn.Mod(thinCutRound(darkMode)),
+	)
+
+	activeBox := btn.New(ctx, overlayOpts, btn.Color(colors.LightTurquoise))
+	activeHoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.LighterTurquoise))
+	activePressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffTurquoise))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
+	swMap := map[string]render.Modifiable{
+		stateActiveHover:   render.NewCompositeM(activeHoverBox.Renderable.(*render.Sprite), settingsSprite),
+		stateActiveUnhover: render.NewCompositeM(activeBox.Renderable.(*render.Sprite), settingsSprite),
+		stateActivePress:   render.NewCompositeM(activePressBox.Renderable.(*render.Sprite), settingsSprite),
+		stateHover:         render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), settingsSprite),
+		stateUnhover:       settingsSprite,
+		statePress:         render.NewCompositeM(pressBox.Renderable.(*render.Sprite), settingsSprite),
+	}
+	starting := stateUnhover
+	if page == PageNameSettings {
+		starting = stateActiveUnhover
+	}
+
+	icon := btn.New(ctx,
+		btn.Layers(1, 1),
+		btn.Renderable(render.NewSwitch(starting, swMap)),
+		btn.Width(viewBarButtonWidth),
+		btn.Height(viewBarButtonHeight),
+		btn.Pos(viewBar.X()+viewBarButtonXMargin, float64(h)-(viewBarButtonHeight+(15*pixelMagnifier))),
+		btn.Binding(mouse.Start, ActiveSwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, ActiveSwitchBinding(stateUnhover)),
+		btn.Binding(mouse.PressOn, ActiveSwitchBinding(statePress)),
+		btn.Binding(mouse.ReleaseOn, ActiveSwitchBinding(stateHover)),
+		btn.Binding(mouse.ClickOn, viewButtonResize(ctx, &page, viewBarButton{pageName: PageNameSettings})),
+		btn.Binding(pageChangeEvent, viewButtonActiveSwitch(viewBarButton{pageName: PageNameSettings})),
+		btn.Binding(pageChangeEvent, func(b *entities.Entity, p PageName) event.Response {
+			h := windowHeights[p]
+			b.SetPos(floatgeom.Point2{viewBar.X() + viewBarButtonXMargin, float64(h) - (viewBarButtonHeight + (15 * pixelMagnifier))})
+			return 0
+		}),
+	)
+	_ = icon
+}
+
+func drawMainContent(ctx *scene.Context, st *state.State, mainContentOffset float64, darkMode bool) {
+	bottomSepY := (231) * pixelMagnifier
+	{
+		bottomSeparator := render.NewColoredLine(mainContentOffset, bottomSepY, mainContentOffset+(320*pixelMagnifier), bottomSepY, render.IdentityColorer(Iff(darkMode, colors.DarkestGray, colors.OffOffOffOffWhite)), 0)
+		//nolint:errcheck
+		ctx.Draw(bottomSeparator, 0, 2)
+	}
+
+	sessionInfoText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
+		return "session started " + st.StartTime.Format("3:04 PM")
+	}), mainContentOffset, bottomSepY+(10*pixelMagnifier))
+	//nolint:errcheck
+	ctx.Draw(sessionInfoText, 0, 2)
+
+	{
+		// this doesn't do anything it's just a circle
+		resetCircle := oakx.NewFilledCircle(colors.Turquoise, 3*pixelMagnifier, 4*pixelMagnifier)
+		resetCircle.SetPos(mainContentOffset+(190*pixelMagnifier), bottomSepY+(15*pixelMagnifier))
+		//nolint:errcheck
+		ctx.Draw(resetCircle, 0, 2)
+	}
+
+	{
+		nextResetText := fonts.get(fontNameMain).NewStringerText(stringers.Func(func() string {
+			d := time.Until(st.ResetAt)
+			return fmt.Sprintf("next reset in %d minutes", int(d.Minutes()))
+		}), mainContentOffset+(200*pixelMagnifier), bottomSepY+(10*pixelMagnifier))
+		//nolint:errcheck
+		ctx.Draw(nextResetText, 0, 2)
+	}
+}
+
+func drawQRCodePage(ctx *scene.Context, qrCodeSprite *render.Sprite, qrCodeSceneX int, mainContentCenterX float64, darkMode bool) {
+	overlayW := 200 * pixelMagnifier
+	overlayH := 210 * pixelMagnifier
+	qrOverlay := btn.New(ctx,
+		btn.Layers(),
+		btn.Color(colors.White),
+		btn.Mod(thinCutRound(darkMode)),
+		btn.Width(overlayW),
+		btn.Height(overlayH),
+	)
+	qrW, qrH := qrCodeSprite.GetDims()
+	qrCodeSprite.SetPos((overlayW-float64(qrW))/2, (overlayH-float64(qrH))/2)
+
+	qrComposite := render.NewCompositeM(
+		qrOverlay.Renderable.(*render.Sprite),
+		qrCodeSprite,
+	)
+	qrComposite.SetPos(mainContentCenterX-(overlayW/2), 236*pixelMagnifier)
+	qrComposite.ShiftX(float64(qrCodeSceneX))
+	//nolint:errcheck
+	ctx.Draw(qrComposite, 0, 2)
+
+	qrInstructions := []string{"Scan to import this signature on", "another device."}
+	yInc := 20
+	for _, inst := range qrInstructions {
+		qrInstructionsSprite := fonts.get(fontNameMain).NewText(inst, qrComposite.X(), qrComposite.Y()+overlayH+float64(yInc))
+		//nolint:errcheck
+		ctx.Draw(qrInstructionsSprite, 0, 2)
+		yInc += 32
+		instW, _ := qrInstructionsSprite.GetDims()
+		qrInstructionsSprite.ShiftX((overlayW - float64(instW)) / 2)
+	}
+}
+
+func drawHistoryPage(ctx *scene.Context, st *state.State, mainContentWidth float64, maxHistoryViewportHeight *int, darkMode bool) {
+	historySceneX := float64(windowPositions[PageNameHistory])
+	offsetX := historySceneX + 10*pixelMagnifier
+	offsetY := titleBarHeight
+
+	// TODO: only scroll table don't scroll title or top of table
+	titleSep := renderPageTitle(ctx, "Signature History", offsetX, offsetY, mainContentWidth)
+
+	timeX := offsetX + 15*pixelMagnifier
+	signatureX := offsetX + 140*pixelMagnifier
+
+	timeLabel := fonts.get(fontNameLabel).NewText("TIME", timeX, titleSep.Y()+10*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(timeLabel, 0, 1)
+
+	signatureLabel := fonts.get(fontNameLabel).NewText("TEXT", signatureX, titleSep.Y()+10*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(signatureLabel, 0, 1)
+
+	tableHeaderSep := render.NewColoredLine(historySceneX, timeLabel.Y()+25*pixelMagnifier, historySceneX+mainContentWidth, timeLabel.Y()+25*pixelMagnifier, render.IdentityColorer(colors.OffOffWhite), 1)
+	//nolint:errcheck
+	ctx.Draw(tableHeaderSep, 0, 2)
+
+	recentSignatures, err := st.ListRecent(200)
+	if err != nil {
+		panic(err)
+	}
+	// TODO: when reset happens, reset recentSignatures
+	cols := historyColumns{timeX: timeX, signatureX: signatureX, sceneX: historySceneX, width: mainContentWidth}
+	nextYStart := tableHeaderSep.Y()
+	for _, sig := range recentSignatures {
+		nextYStart = drawHistoryRow(ctx, sig, cols, nextYStart, darkMode)
+	}
+	*maxHistoryViewportHeight = int(nextYStart) + 100
+	// TODO: scroll bar?
+}
+
+func drawScanPage(ctx *scene.Context, mainContentWidth float64, darkMode bool) {
+	sceneX := float64(windowPositions[PageNameScan])
+	offsetX := sceneX + 24*pixelMagnifier
+	offsetY := titleBarHeight
+	titleSep := renderPageTitle(ctx, "Verify Document", sceneX+10*pixelMagnifier, offsetY, mainContentWidth)
+	_ = titleSep
+
+	labelText := fonts.get(fontNameLabel).NewText("//  DOCUMENT", offsetX, titleSep.Y()+20*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(labelText, 0, 1)
+
+	docTextInput := textinput.New(ctx, textinput.WithDims(
+		mainContentWidth-70*pixelMagnifier,
+		80*pixelMagnifier,
+	),
+		textinput.WithFont(fonts.get(fontNameMain)),
+		textinput.WithPosition(offsetX+20*pixelMagnifier, labelText.Y()+34*pixelMagnifier),
+		textinput.WithBlinkerLayers(0, 3),
+		textinput.WithBlinkerColor(colors.DarkGray),
+	)
+	//nolint:errcheck
+	ctx.Draw(docTextInput.Renderable, 0, 2)
+
+	_ = btn.New(ctx, btn.Layers(0, 0),
+		btn.Width(mainContentWidth-50*pixelMagnifier),
+		btn.Height(90*pixelMagnifier),
+		btn.Color(colors.OffOffOffOffWhite),
+		btn.Pos(offsetX, labelText.Y()+24*pixelMagnifier),
+		btn.Mod(wideCutRound(darkMode)),
+	)
+
+	// backing := render.NewColorBox(int(mainContentWidth-20*pixelMagnifier), 200*pixelMagnifier, colors.DarkGray)
+	// backing.SetPos(offsetX, titleSep.Y()+20)
+	// //nolint:errcheck
+	// ctx.Draw(backing, 0, 1)
+
+	// TODO:
+	// document text area
+	// signature paste area
+	// verify button
+	// reset button
+	// verified pop up section
+}
+
+func drawSettingsPage(ctx *scene.Context, mainContentWidth float64) {
+	sceneX := float64(windowPositions[PageNameSettings])
+	offsetX := sceneX + 10*pixelMagnifier
+	offsetY := titleBarHeight
+	titleSep := renderPageTitle(ctx, "Settings", offsetX, offsetY, mainContentWidth)
+	_ = titleSep
+
+	// TODO:
+	// logged in / out section
+	// signature version dropdown
+	// auto reset dropdown
+	// appearance / dark mode dropdown
+	// signout toast
+}
+
+// historyColumns is where the history table's columns and edges sit.
+type historyColumns struct {
+	timeX, signatureX, sceneX, width float64
+}
+
+// drawHistoryRow draws one past signature as a row of the history table, returning where the
+// next row starts.
+func drawHistoryRow(ctx *scene.Context, sig *asigx.Asig, cols historyColumns, nextYStart float64, darkMode bool) float64 {
+	timeX, signatureX, historySceneX, mainContentWidth := cols.timeX, cols.signatureX, cols.sceneX, cols.width
+	tm := time.Unix(sig.StartSecond, 0)
+	// TODO: bold font
+	relTxt := fonts.get(fontNameMain).NewStringerText(stringers.KindRelativeTime{T: tm}, timeX, nextYStart+10*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(relTxt, 0, 2)
+
+	absTxt := fonts.get(fontNameMain).NewText(tm.Format("Jan _2, 3:04 PM"), timeX, nextYStart+25*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(absTxt, 0, 2)
+
+	tableRowSep := render.NewColoredLine(historySceneX, absTxt.Y()+22*pixelMagnifier, historySceneX+mainContentWidth, absTxt.Y()+22*pixelMagnifier, render.IdentityColorer(colors.OffOffWhite), 1)
+	//nolint:errcheck
+	ctx.Draw(tableRowSep, 0, 2)
+
+	typedTxt := fonts.get(fontNameMain).NewText(sig.FirstCharacters, signatureX, nextYStart+18*pixelMagnifier)
+	//nolint:errcheck
+	ctx.Draw(typedTxt, 0, 2)
+
+	overlayOpts := btn.And(
+		btn.Layers(),
+		btn.Width(25*pixelMagnifier),
+		btn.Height(25*pixelMagnifier),
+		btn.Mod(thinCutRound(darkMode)),
+	)
+
+	unhoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.White))
+	hoverBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffWhite))
+	pressBox := btn.New(ctx, overlayOpts, btn.Color(colors.OffOffOffOffWhite))
+	copyIconColor := colors.HexLightGray
+	if darkMode {
+		copyIconColor = colors.HexBlack
+	}
+	copyIcon := oakx.LoadSVG(imagesFS, path.Join("images", "copy.svg"), 13*pixelMagnifier, 13*pixelMagnifier, copyIconColor)
+	copyIcon.SetPos(7*pixelMagnifier, 7*pixelMagnifier)
+
+	copySwitch := render.NewSwitch(stateUnhover, map[string]render.Modifiable{
+		stateUnhover: render.NewCompositeM(unhoverBox.Renderable.(*render.Sprite), copyIcon),
+		stateHover:   render.NewCompositeM(hoverBox.Renderable.(*render.Sprite), copyIcon),
+		statePress:   render.NewCompositeM(pressBox.Renderable.(*render.Sprite), copyIcon),
+	})
+
+	copyButton := btn.New(ctx, btn.Layers(0, 0),
+		btn.Width(25*pixelMagnifier),
+		btn.Height(25*pixelMagnifier),
+		btn.Renderable(copySwitch),
+		btn.Pos(signatureX+180*pixelMagnifier, nextYStart+12*pixelMagnifier),
+		btn.Binding(mouse.Start, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.Stop, oakx.EntitySwitchBinding(stateUnhover)),
+		btn.Binding(mouse.RelativePressOn, oakx.EntitySwitchBinding(statePress)),
+		btn.Binding(mouse.RelativeReleaseOn, oakx.EntitySwitchBinding(stateHover)),
+		btn.Binding(mouse.RelativeClickOn, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			if err := clipboard.WriteAll(sig.Asig.String()); err != nil {
+				fmt.Println(err)
+			}
+			return 0
+		}),
+		btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)))
+	for _, c := range copyButton.Children {
+		c.ShiftPos(13*pixelMagnifier, 13*pixelMagnifier)
+	}
+
+	sv := NewSignalVolumeSprite(0, 0, 18*pixelMagnifier, 18*pixelMagnifier)
+	sv.SetActions(sig.TotalActions)
+
+	hoverCh := make(chan struct{})
+	btn.New(ctx, btn.Layers(0, 0),
+		btn.Width(18*pixelMagnifier),
+		btn.Height(18*pixelMagnifier),
+		btn.Renderable(sv),
+		btn.Pos(copyButton.X()-20*pixelMagnifier, copyButton.Y()),
+		btn.Binding(event.Enter, oakx.RelativePhaseCollisionEnter(ctx)),
+		btn.Binding(mouse.Start, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			go func() {
+				var tooltip *entities.Entity
+				select {
+				case <-hoverCh:
+					return
+				case <-ctx.Done():
+					return
+				case <-time.After(600 * time.Millisecond):
+					ev := mouse.LastEvent
+					tooltip = btn.New(ctx, btn.Layers(1, 2),
+						btn.Pos(ev.X(), ev.Y()-25*pixelMagnifier), // - 35 to render above the mouse itself
+						btn.Width(70*pixelMagnifier),
+						btn.Height(20*pixelMagnifier),
+						btn.Font(fonts.get(fontNameTooltip)),
+						btn.Color(color.RGBA{90, 90, 90, 100}),
+						btn.Text("Actions: "+strconv.Itoa(sig.TotalActions)),
+					)
+				}
+				<-hoverCh
+				for _, child := range tooltip.Children {
+					child.Destroy()
+				}
+				tooltip.Destroy()
+			}()
+			return 0
+		}),
+		btn.Binding(mouse.Stop, func(b *entities.Entity, _ *mouse.Event) event.Response {
+			select {
+			case hoverCh <- struct{}{}:
+			default:
+			}
+			return 0
+		}),
+	)
+	nextYStart += 45 * pixelMagnifier
+	return nextYStart
 }
 
 func renderPageTitle(ctx *scene.Context, str string, x, y, width float64) *render.Sprite {
