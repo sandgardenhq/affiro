@@ -42,7 +42,3 @@ tell them apart with `errors.Is` rather than by reading the message:
 `*client.Error` also carries `StatusCode` and a `Message`. `StatusCode` is `0` when there was no
 answer to have a status (the API was unreachable, or the call was never sent), so a
 `ErrInvalidDocument` with a status came from the API and one without it came from here.
-
-Neither field ever contains the API key. The key travels only in a header, and an API that
-quotes it back has it removed from `Message` before it is kept. This package writes nothing to any
-log.

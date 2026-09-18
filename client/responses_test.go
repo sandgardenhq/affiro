@@ -11,7 +11,8 @@ import (
 	"github.com/sandgardenhq/affiro/client"
 )
 
-func answering(t *testing.T, body string) *client.Client {
+// clientAnsweredWith hands back a client whose API answers every call with body, verbatim.
+func clientAnsweredWith(t *testing.T, body string) *client.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// A large body leaves this write short: the client stops reading at its own cap.
@@ -27,7 +28,7 @@ func answering(t *testing.T, body string) *client.Client {
 
 func TestUnrecognisedVerdictIsPassedThrough(t *testing.T) {
 	t.Parallel()
-	cl := answering(t, `{"id":"sdc-1","humanWritten":"almost certainly"}`)
+	cl := clientAnsweredWith(t, `{"id":"sdc-1","humanWritten":"almost certainly"}`)
 
 	analysis, err := cl.Upload(t.Context(), testSignature(t), strings.NewReader("hello"))
 	if err != nil {
@@ -52,7 +53,7 @@ func TestEveryDocumentedVerdictDecodes(t *testing.T) {
 	} {
 		t.Run(string(verdict), func(t *testing.T) {
 			t.Parallel()
-			cl := answering(t, `{"id":"sdc-1","humanWritten":"`+string(verdict)+`"}`)
+			cl := clientAnsweredWith(t, `{"id":"sdc-1","humanWritten":"`+string(verdict)+`"}`)
 			analysis, err := cl.Upload(t.Context(), testSignature(t), strings.NewReader("hello"))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -66,7 +67,7 @@ func TestEveryDocumentedVerdictDecodes(t *testing.T) {
 
 func TestSuccessWithAnUnreadableBodyIsUnavailable(t *testing.T) {
 	t.Parallel()
-	cl := answering(t, "this is not json")
+	cl := clientAnsweredWith(t, "this is not json")
 
 	_, err := cl.Upload(t.Context(), testSignature(t), strings.NewReader("hello"))
 	if !errors.Is(err, client.ErrUnavailable) {
@@ -82,7 +83,7 @@ func TestOversizedReplyIsRefusedRatherThanTruncated(t *testing.T) {
 	// Valid JSON then padding: truncating at the cap would still decode, so only refusing an
 	// over-cap reply outright fails this.
 	padding := strings.Repeat(" ", 2<<20)
-	cl := answering(t, `{"id":"sdc-1","humanWritten":"likely"}`+padding)
+	cl := clientAnsweredWith(t, `{"id":"sdc-1","humanWritten":"likely"}`+padding)
 
 	analysis, err := cl.Upload(t.Context(), testSignature(t), strings.NewReader("hello"))
 	if err == nil {

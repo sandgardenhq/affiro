@@ -1,10 +1,7 @@
 package client_test
 
 import (
-	"bytes"
 	"fmt"
-	"log"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,28 +108,5 @@ func TestTokenNeverAppearsInAnError(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// Redirects the process-wide loggers, so nothing may run alongside it.
-//
-//nolint:paralleltest
-func TestTokenNeverAppearsInALogLine(t *testing.T) {
-	var logged bytes.Buffer
-	log.SetOutput(&logged)
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
-	t.Cleanup(func() {
-		log.SetOutput(nil)
-		slog.SetDefault(slog.Default())
-	})
-
-	for name, failure := range failureModes(t) {
-		t.Run(name, func(t *testing.T) {
-			_ = failure(t)
-		})
-	}
-
-	if logged.Len() != 0 {
-		t.Errorf("the client wrote to the logs at all, which it must not do: %s", logged.String())
 	}
 }

@@ -12,6 +12,7 @@ linters:
     - containedctx
     - copyloopvar
     - cyclop 
+    - depguard
     - dupword
     - durationcheck
     - err113 
@@ -58,6 +59,18 @@ linters:
     - whitespace
     - wrapcheck 
   settings:
+    depguard:
+      rules:
+        # An API key passes through the client package, so it writes nothing to any log. A
+        # reader can confirm that by seeing no logger is reachable from here.
+        client:
+          files:
+            - "**/client/*.go"
+          deny:
+            - pkg: log
+              desc: the client package must not log; return an error the caller can handle
+            - pkg: log/slog
+              desc: the client package must not log; return an error the caller can handle
     staticcheck:
       checks: ["all", "-ST1016"] # Nice to have, but annoying
     errcheck:

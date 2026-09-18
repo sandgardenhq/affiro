@@ -108,7 +108,7 @@ func (c *Client) upload(ctx context.Context, path string, sig *asig.Asig, conten
 	if sig == nil {
 		return Analysis{}, refused(ErrInvalidDocument, "no signature was supplied")
 	}
-	if isNil(content) {
+	if readerIsNil(content) {
 		return Analysis{}, refused(ErrInvalidDocument, "no document content was supplied")
 	}
 	prefix := sig.String() + "\n"
@@ -198,9 +198,9 @@ func contentLength(content io.Reader) (int64, bool) {
 	}
 }
 
-// isNil covers both no reader and a nil pointer wearing the interface, which is not equal to nil
-// and panics on the first method call.
-func isNil(content io.Reader) bool {
+// readerIsNil covers both no reader and a nil pointer wearing the interface, which is not
+// equal to nil and panics on the first method call.
+func readerIsNil(content io.Reader) bool {
 	if content == nil {
 		return true
 	}

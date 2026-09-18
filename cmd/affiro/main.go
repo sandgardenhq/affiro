@@ -109,7 +109,7 @@ const helpText = `affiro CLI
 usage: affiro [-gui]`
 
 // apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
-// point at a local API server), otherwise the production host the client package also
+// point at a local API server), otherwise the app.affiro.com host the client package also
 // defaults to. It is what a caller passes to client.WithHost.
 func apiBaseURL() string {
 	if baseURL := os.Getenv("AFFIRO_API_BASE_URL"); baseURL != "" {

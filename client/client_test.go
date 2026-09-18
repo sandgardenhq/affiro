@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -20,20 +21,29 @@ func testSignature(t *testing.T) *asig.Asig {
 	return sig
 }
 
+// receivedRequest is what the test server saw, gathered so a test can compare the whole
+// request at once rather than a field at a time.
+type receivedRequest struct {
+	method     string
+	path       string
+	authHeader string
+	body       string
+}
+
 func TestUploadPostsSignatureThenContent(t *testing.T) {
 	t.Parallel()
 	sig := testSignature(t)
 
-	var gotPath, gotMethod, gotAuth, gotBody string
+	var got receivedRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotMethod = r.Method
-		gotAuth = r.Header.Get("Authorization")
+		got.method = r.Method
+		got.path = r.URL.Path
+		got.authHeader = r.Header.Get("Authorization")
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("failed to read request body: %v", err)
 		}
-		gotBody = string(body)
+		got.body = string(body)
 		_, _ = io.WriteString(w, `{"id":"sdc-1","documentId":"doc-1","humanWritten":"likely","descriptions":["a"]}`)
 	}))
 	defer srv.Close()
@@ -47,21 +57,25 @@ func TestUploadPostsSignatureThenContent(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for what, pair := range map[string][2]string{
-		"method":        {gotMethod, http.MethodPost},
-		"path":          {gotPath, "/api/v1/documents"},
-		"authorization": {gotAuth, "Bearer secret-token"},
-		"body":          {gotBody, sig.String() + "\nhello world"},
-		"id":            {analysis.ID, "sdc-1"},
-		"document id":   {analysis.DocumentID, "doc-1"},
-		"human written": {string(analysis.HumanWritten), string(client.HumanWrittenLikely)},
-	} {
-		if pair[0] != pair[1] {
-			t.Errorf("got %s %q, want %q", what, pair[0], pair[1])
-		}
+	want := receivedRequest{
+		method:     http.MethodPost,
+		path:       "/api/v1/documents",
+		authHeader: "Bearer secret-token",
+		body:       sig.String() + "\nhello world",
 	}
-	if len(analysis.Descriptions) != 1 || analysis.Descriptions[0] != "a" {
-		t.Errorf("got descriptions %v, want [a]", analysis.Descriptions)
+	if got != want {
+		t.Errorf("got request %+v, want %+v", got, want)
+	}
+
+	wantAnalysis := client.Analysis{
+		ID:           "sdc-1",
+		DocumentID:   "doc-1",
+		HumanWritten: client.HumanWrittenLikely,
+		Descriptions: []string{"a"},
+	}
+	// Analysis carries a slice, so it is not comparable with ==.
+	if !reflect.DeepEqual(analysis, wantAnalysis) {
+		t.Errorf("got analysis %+v, want %+v", analysis, wantAnalysis)
 	}
 }
 

@@ -57,7 +57,7 @@ func Example() {
 	}
 }
 
-// Pointing the client at an API other than production.
+// Pointing the client at an API other than app.affiro.com.
 func ExampleWithHost() {
 	host := client.DefaultHost
 	if fromEnv := os.Getenv("AFFIRO_API_BASE_URL"); fromEnv != "" {

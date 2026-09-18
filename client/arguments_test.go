@@ -12,20 +12,22 @@ import (
 	"github.com/sandgardenhq/affiro/client"
 )
 
-func refusingServer(t *testing.T) (srv *httptest.Server, reached *bool) {
+// serverRecordingContact answers every request, and reports through contacted whether it was
+// asked anything at all.
+func serverRecordingContact(t *testing.T) (srv *httptest.Server, contacted *bool) {
 	t.Helper()
-	var wasReached bool
+	var wasContacted bool
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		wasReached = true
+		wasContacted = true
 		_, _ = io.WriteString(w, `{"id":"sdc-1"}`)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &wasReached
+	return srv, &wasContacted
 }
 
 func TestUploadRejectsANilSignature(t *testing.T) {
 	t.Parallel()
-	srv, reached := refusingServer(t)
+	srv, contacted := serverRecordingContact(t)
 	cl, err := client.New("secret-token", client.WithHost(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -35,14 +37,14 @@ func TestUploadRejectsANilSignature(t *testing.T) {
 	if !errors.Is(err, client.ErrInvalidDocument) {
 		t.Errorf("got error %v, want one matching %v", err, client.ErrInvalidDocument)
 	}
-	if *reached {
+	if *contacted {
 		t.Error("the client sent a request it should have refused to build")
 	}
 }
 
 func TestUploadVersionRejectsANilSignature(t *testing.T) {
 	t.Parallel()
-	srv, reached := refusingServer(t)
+	srv, contacted := serverRecordingContact(t)
 	cl, err := client.New("secret-token", client.WithHost(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -52,14 +54,14 @@ func TestUploadVersionRejectsANilSignature(t *testing.T) {
 	if !errors.Is(err, client.ErrInvalidDocument) {
 		t.Errorf("got error %v, want one matching %v", err, client.ErrInvalidDocument)
 	}
-	if *reached {
+	if *contacted {
 		t.Error("the client sent a request it should have refused to build")
 	}
 }
 
 func TestUploadRejectsNilContent(t *testing.T) {
 	t.Parallel()
-	srv, reached := refusingServer(t)
+	srv, contacted := serverRecordingContact(t)
 	cl, err := client.New("secret-token", client.WithHost(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -69,7 +71,7 @@ func TestUploadRejectsNilContent(t *testing.T) {
 	if !errors.Is(err, client.ErrInvalidDocument) {
 		t.Errorf("got error %v, want one matching %v", err, client.ErrInvalidDocument)
 	}
-	if *reached {
+	if *contacted {
 		t.Error("the client sent a request it should have refused to build")
 	}
 }
@@ -88,7 +90,7 @@ func TestUploadRejectsATypedNilContent(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			srv, reached := refusingServer(t)
+			srv, contacted := serverRecordingContact(t)
 			cl, err := client.New("secret-token", client.WithHost(srv.URL))
 			if err != nil {
 				t.Fatalf("unexpected error building client: %v", err)
@@ -98,7 +100,7 @@ func TestUploadRejectsATypedNilContent(t *testing.T) {
 			if !errors.Is(err, client.ErrInvalidDocument) {
 				t.Errorf("got error %v, want one matching %v", err, client.ErrInvalidDocument)
 			}
-			if *reached {
+			if *contacted {
 				t.Error("the client sent a request it should have refused to build")
 			}
 		})
@@ -115,7 +117,7 @@ func TestUploadVersionRejectsAnUnusableDocumentID(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			srv, reached := refusingServer(t)
+			srv, contacted := serverRecordingContact(t)
 			cl, err := client.New("secret-token", client.WithHost(srv.URL))
 			if err != nil {
 				t.Fatalf("unexpected error building client: %v", err)
@@ -125,7 +127,7 @@ func TestUploadVersionRejectsAnUnusableDocumentID(t *testing.T) {
 			if !errors.Is(err, client.ErrInvalidDocument) {
 				t.Errorf("got error %v, want one matching %v", err, client.ErrInvalidDocument)
 			}
-			if *reached {
+			if *contacted {
 				t.Error("the client sent a request it should have refused to build")
 			}
 		})
@@ -134,7 +136,7 @@ func TestUploadVersionRejectsAnUnusableDocumentID(t *testing.T) {
 
 func TestWithHTTPClientIgnoresANilClient(t *testing.T) {
 	t.Parallel()
-	srv, _ := refusingServer(t)
+	srv, _ := serverRecordingContact(t)
 	cl, err := client.New("secret-token", client.WithHost(srv.URL), client.WithHTTPClient(nil))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -187,22 +189,22 @@ func TestEveryErrorMatchesExactlyOneSentinel(t *testing.T) {
 			return err
 		},
 		"nil signature": func(t *testing.T) error {
-			cl := mustClient(t)
+			cl := clientToALiveServer(t)
 			_, err := cl.Upload(t.Context(), nil, strings.NewReader("hello"))
 			return err
 		},
 		"nil content": func(t *testing.T) error {
-			cl := mustClient(t)
+			cl := clientToALiveServer(t)
 			_, err := cl.Upload(t.Context(), testSignature(t), nil)
 			return err
 		},
 		"typed nil content": func(t *testing.T) error {
-			cl := mustClient(t)
+			cl := clientToALiveServer(t)
 			_, err := cl.Upload(t.Context(), testSignature(t), nilBuffer)
 			return err
 		},
 		"empty document id": func(t *testing.T) error {
-			cl := mustClient(t)
+			cl := clientToALiveServer(t)
 			_, err := cl.UploadVersion(t.Context(), "", testSignature(t), strings.NewReader("hello"))
 			return err
 		},
@@ -240,9 +242,11 @@ func TestEveryErrorMatchesExactlyOneSentinel(t *testing.T) {
 	}
 }
 
-func mustClient(t *testing.T) *client.Client {
+// clientToALiveServer is for tests that only care how a call fails before it reaches the API;
+// the server behind it answers, so a failure is the client's own.
+func clientToALiveServer(t *testing.T) *client.Client {
 	t.Helper()
-	srv, _ := refusingServer(t)
+	srv, _ := serverRecordingContact(t)
 	cl, err := client.New("secret-token", client.WithHost(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)

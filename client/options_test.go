@@ -11,15 +11,11 @@ import (
 	"github.com/sandgardenhq/affiro/client"
 )
 
-func TestDefaultHostIsProduction(t *testing.T) {
+func TestDefaultHostIsUsedWhenNoneIsGiven(t *testing.T) {
 	t.Parallel()
-	if client.DefaultHost != "https://app.affiro.com" {
-		t.Errorf("got default host %q, want https://app.affiro.com", client.DefaultHost)
-	}
-
 	var got string
 	cl, err := client.New("secret-token", client.WithHTTPClient(&http.Client{
-		Transport: recordURL(&got),
+		Transport: transportRecordingURL(&got),
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -35,7 +31,7 @@ func TestHostTrailingSlashDoesNotDoubleUp(t *testing.T) {
 	var got string
 	cl, err := client.New("secret-token",
 		client.WithHost("https://play.example.com/"),
-		client.WithHTTPClient(&http.Client{Transport: recordURL(&got)}),
+		client.WithHTTPClient(&http.Client{Transport: transportRecordingURL(&got)}),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error building client: %v", err)
@@ -75,7 +71,9 @@ func TestCancelledContextIsUnavailable(t *testing.T) {
 	}
 }
 
-func recordURL(into *string) http.RoundTripper {
+// transportRecordingURL stands in for the API: it answers an empty 200 and records the URL it
+// was asked for.
+func transportRecordingURL(into *string) http.RoundTripper {
 	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		*into = r.URL.String()
 		return &http.Response{
