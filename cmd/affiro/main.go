@@ -36,6 +36,7 @@ import (
 	"github.com/pkg/browser"
 	"github.com/sandgardenhq/affiro/asig"
 	"github.com/sandgardenhq/affiro/asig/keylog"
+	"github.com/sandgardenhq/affiro/client"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/asigx"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/auth"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/cliupdate"
@@ -100,8 +101,6 @@ func main() {
 
 var fullVersion = "affiro " + buildinfo.Version
 
-const defaultAPIBaseURL = "https://app.affiro.com"
-
 // errHelp is returned when os.Args is empty, leaving no subcommand to read.
 var errHelp = errors.New(helpText)
 
@@ -109,18 +108,19 @@ const helpText = `affiro CLI
 
 usage: affiro [-gui]`
 
-// apiBaseURL returns the playground API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
-// point at a local playground server), otherwise defaultAPIBaseURL.
+// apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
+// point at a local API server), otherwise the app.affiro.com host the client package also
+// defaults to. It is what a caller passes to client.WithHost.
 func apiBaseURL() string {
 	if baseURL := os.Getenv("AFFIRO_API_BASE_URL"); baseURL != "" {
 		return baseURL
 	}
-	return defaultAPIBaseURL
+	return client.DefaultHost
 }
 
 // checkForUpdate reports whether a newer affiro build is published and, if so, applies it to
 // the currently running executable in place. Any failure (network, API, or apply) prints a
-// message and returns rather than crashing, so -version stays usable when the playground API is
+// message and returns rather than crashing, so -version stays usable when the affiro API is
 // unreachable.
 func checkForUpdate() {
 	baseURL := apiBaseURL()

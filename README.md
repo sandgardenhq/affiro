@@ -7,6 +7,7 @@ affiro produces signatures from how a user types, using timing and structure of 
 
 - [`asig`](asig/README.md): the signature-creation library
 - [`cmd/affiro`](cmd/affiro/README.md): CLI that monitors keystrokes and produces signatures using `asig`
+- [`client`](client/README.md): Go client for programs that upload documents to the affiro API with an API key
 
 ## Building
 
