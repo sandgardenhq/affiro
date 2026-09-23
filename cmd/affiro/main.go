@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -157,36 +158,113 @@ func defaultStorageDir() (string, error) {
 	return dir, nil
 }
 
-// recordEvents drains the key monitor into the signature for as long as the process runs,
-// reprinting the signature after each event and copying it on backslash.
-func recordEvents(st *state.State) {
+const reservedBackgroundFilePath = ".background-running"
+
+func spawnBackgroundWorker(dir string) {
+	// TODO: log these, and add a verbose flag to print these logs
+	// fmt.Println("spawning background worker")
+	knownPath := filepath.Join(dir, reservedBackgroundFilePath)
+	spawned := false
+	spawn := func() {
+		if spawned {
+			return
+		}
+		if err := keylogx.SpawnBackgroundWorker(); err != nil {
+			panic(err)
+		}
+		spawned = true
+		for {
+			time.Sleep(1 * time.Second)
+			f, err := os.Open(knownPath)
+			if err == nil {
+				fmt.Println("file found")
+				f.Close()
+				return
+			}
+			// fmt.Println("opening file error", err)
+		}
+	}
 	for {
-		e, ok := keyMonitor.pop()
-		if !ok {
-			// This is mostly just a problem on windows, as we need a better way to filter out OS events
-			// we don't care about (or pop needs to loop though them)
-			const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
-			time.Sleep(inputRefreshRate)
+		f, err := os.Open(knownPath)
+		if err != nil {
+			// fmt.Println("file not found, spawning")
+			spawn()
 			continue
 		}
-		if err := st.Write(e); err != nil {
-			fmt.Println("error writing event: " + err.Error())
+		content, err := io.ReadAll(f)
+		if err != nil {
+			panic(err)
 		}
-		sigStr := st.String()
-		if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
-			if err := clipboard.WriteAll(sigStr); err != nil {
-				fmt.Println("error writing to clipboard: " + err.Error())
+		secs, err := strconv.ParseInt(string(content), 10, 64)
+		if err != nil {
+			// fmt.Println("invalid content found in background running file")
+			spawn()
+			continue
+		}
+		t := time.Unix(secs, 0)
+		if time.Since(t) > 61*time.Second {
+			// fmt.Println("background running file is too old!")
+			spawn()
+			continue
+		}
+		// fmt.Println("recent background running file found")
+		return
+	}
+}
+
+// recordEvents drains the key monitor into the signature for as long as the process runs,
+// reprinting the signature after each event and copying it on backslash.
+func recordEvents(st *state.State, dir string) {
+	if keylogx.BackgroundWorkerAllowed {
+		spawnBackgroundWorker(dir)
+		ch, err := keylogx.WaitForBackgroundEvents()
+		if err != nil {
+			panic(err)
+		}
+		for e := range ch {
+			//fmt.Println("pop:", e)
+			if err := st.Write(e); err != nil {
+				fmt.Println("error writing event: " + err.Error())
 			}
+			sigStr := st.String()
+			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+				if err := clipboard.WriteAll(sigStr); err != nil {
+					fmt.Println("error writing to clipboard: " + err.Error())
+				}
+			}
+			fmt.Print(sigStr + "\r")
 		}
-		fmt.Print(sigStr + "\r")
+	} else {
+		for {
+			e, ok := keyMonitor.pop()
+			//fmt.Println("pop:", e, ok)
+			if !ok {
+				// This is mostly just a problem on windows, as we need a better way to filter out OS events
+				// we don't care about (or pop needs to loop though them)
+				const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
+				time.Sleep(inputRefreshRate)
+				continue
+			}
+			if err := st.Write(e); err != nil {
+				fmt.Println("error writing event: " + err.Error())
+			}
+			sigStr := st.String()
+			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+				if err := clipboard.WriteAll(sigStr); err != nil {
+					fmt.Println("error writing to clipboard: " + err.Error())
+				}
+			}
+			fmt.Print(sigStr + "\r")
+		}
 	}
 }
 
 // cliOptions is what the command line asked for, once the flags that just print and exit
 // have been dealt with.
 type cliOptions struct {
-	storageDir string
-	guiMode    bool
+	storageDir       string
+	backgroundWorker bool
+	guiMode          bool
 }
 
 // parseFlags reads the command line. -help and -version are handled here and exit the
@@ -194,11 +272,15 @@ type cliOptions struct {
 func parseFlags() (cliOptions, error) {
 	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
 	guiMode := flagSet.Bool("gui", false, "run in gui mode")
+	backgroundWorker := flagSet.Bool("background-worker", false, "run a background worker (windows only)")
 	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
 	showVersion := flagSet.Bool("version", false, "print version and exit")
 	showHelp := flagSet.Bool("help", false, "print help text and exit")
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		return cliOptions{}, fmt.Errorf("parsing the command line: %w", err)
+	}
+	if *backgroundWorker && !keylogx.BackgroundWorkerAllowed {
+		return cliOptions{}, fmt.Errorf("background workers not supported on this operating system")
 	}
 	if *storageDir == "" {
 		dir, err := defaultStorageDir()
@@ -216,12 +298,12 @@ func parseFlags() (cliOptions, error) {
 		checkForUpdate()
 		os.Exit(254)
 	}
-	return cliOptions{storageDir: *storageDir, guiMode: *guiMode}, nil
+	return cliOptions{storageDir: *storageDir, guiMode: *guiMode, backgroundWorker: *backgroundWorker}, nil
 }
 
 // startBackground kicks off the work that runs for as long as the process does: flushing the
 // signature to disk, draining key events into it, and stopping the monitor on a signal.
-func startBackground(st *state.State) {
+func startBackground(st *state.State, dir string) {
 	const storageFlushRate = 30 * time.Second // TODO: make user configurable
 	go func() {
 		for range time.After(storageFlushRate) {
@@ -230,8 +312,7 @@ func startBackground(st *state.State) {
 			}
 		}
 	}()
-	// TODO: library utlity for this:
-	go recordEvents(st)
+	go recordEvents(st, dir)
 	c := make(chan os.Signal, 10)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -239,6 +320,58 @@ func startBackground(st *state.State) {
 		keyMonitor.stop()
 		os.Exit(1)
 	}()
+}
+
+func keepBackgroundFileAlive(dir string) {
+	check := func() {
+		fmt.Println("keeping background file alive still")
+		knownPath := filepath.Join(dir, reservedBackgroundFilePath)
+		f, err := os.Create(knownPath)
+		if err != nil {
+			fmt.Printf("failed to create known file: %v\n", err)
+			return
+		}
+		defer f.Close()
+		timeNow := strconv.FormatInt(time.Now().Unix(), 10)
+		_, err = f.Write([]byte(timeNow))
+		if err != nil {
+			fmt.Printf("failed to write to known file: %v\n", err)
+			return
+		}
+	}
+	check()
+	t := time.NewTicker(30 * time.Second)
+	for {
+		<-t.C
+		check()
+	}
+}
+
+func startBackgroundOnly(dir string) error {
+	fmt.Println("starting background worker")
+	go keepBackgroundFileAlive(dir)
+	mon, err := keylog.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start keyboard monitor: %w", err)
+	}
+	keyMonitor.set(mon)
+	w := keylogx.BackgroundEventsWriter()
+	for {
+		e, ok := keyMonitor.pop()
+		if !ok {
+			// This is mostly just a problem on windows, as we need a better way to filter out OS events
+			// we don't care about (or pop needs to loop though them)
+			const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
+			time.Sleep(inputRefreshRate)
+			continue
+		}
+		fmt.Println("background pop", e)
+		//fmt.Println("writing event", e)
+		select {
+		case w <- e:
+		default:
+		}
+	}
 }
 
 func run() error {
@@ -249,21 +382,25 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if opts.backgroundWorker {
+		return startBackgroundOnly(opts.storageDir)
+	}
 	fmt.Println(`backslash ('\') to copy`)
 	st, err := state.New(context.Background(), opts.storageDir, time.Hour, apiBaseURL())
 	if err != nil {
-		return fmt.Errorf("opening the signature store: %w", err)
+		return fmt.Errorf("failed to open signature store: %w", err)
 	}
-	startBackground(st)
+	startBackground(st, opts.storageDir)
 	if opts.guiMode {
 		return guiMonitor(st)
 	}
-	// todo: make this killable
-	mon, err := keylog.Start()
-	if err != nil {
-		return fmt.Errorf("starting the keyboard monitor: %w", err)
+	if !keylogx.BackgroundWorkerAllowed {
+		mon, err := keylog.Start()
+		if err != nil {
+			return fmt.Errorf("failed to start keyboard monitor: %w", err)
+		}
+		keyMonitor.set(mon)
 	}
-	keyMonitor.set(mon)
 	select {}
 }
 
@@ -312,11 +449,13 @@ func guiMonitor(st *state.State) error {
 			// TODO: this hangs on linux but not on OSX, very annoying to program around
 			// NB: do not move this from this scene; if this is moved to a different scene, it stops tracking events
 			// TODO: keep this here for osx/linux1, move it to init for windows
-			mon, err := keylog.Start()
-			if err != nil {
-				fmt.Println("failed to start key monitor: ", err.Error())
-			} else {
-				keyMonitor.set(mon)
+			if !keylogx.BackgroundWorkerAllowed {
+				mon, err := keylog.Start()
+				if err != nil {
+					fmt.Println("failed to start key monitor: ", err.Error())
+				} else {
+					keyMonitor.set(mon)
+				}
 			}
 			if !keylogx.LocalKeyEventsPresent {
 				event.GlobalBind(ctx, mouse.Release, func(ev *mouse.Event) event.Response {
@@ -1410,7 +1549,9 @@ func buildQRCode(st *state.State) (*render.Sprite, func()) {
 
 func initTitlebar(ctx *scene.Context, titleBarHeight float64, darkMode bool) {
 	event.GlobalBind(ctx, titlebar.WindowClosingEvent, func(struct{}) event.Response {
-		keyMonitor.stop()
+		if !keylogx.BackgroundWorkerAllowed {
+			keyMonitor.stop()
+		}
 		return 0
 	})
 	titlebar.New(ctx, func(c titlebar.Constructor) titlebar.Constructor {

