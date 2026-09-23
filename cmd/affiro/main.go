@@ -212,50 +212,58 @@ func spawnBackgroundWorker(dir string) {
 	}
 }
 
+func recordEventsBackgroundWorker(st *state.State, dir string) {
+	spawnBackgroundWorker(dir)
+	ch, err := keylogx.WaitForBackgroundEvents()
+	if err != nil {
+		panic(err)
+	}
+	for e := range ch {
+		// fmt.Println("pop:", e)
+		if err := st.Write(e); err != nil {
+			fmt.Println("error writing event: " + err.Error())
+		}
+		sigStr := st.String()
+		if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+			if err := clipboard.WriteAll(sigStr); err != nil {
+				fmt.Println("error writing to clipboard: " + err.Error())
+			}
+		}
+		fmt.Print(sigStr + "\r")
+	}
+}
+
+func recordEventsForeground(st *state.State) {
+	for {
+		e, ok := keyMonitor.pop()
+		// fmt.Println("pop:", e, ok)
+		if !ok {
+			// This is mostly just a problem on windows, as we need a better way to filter out OS events
+			// we don't care about (or pop needs to loop though them)
+			const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
+			time.Sleep(inputRefreshRate)
+			continue
+		}
+		if err := st.Write(e); err != nil {
+			fmt.Println("error writing event: " + err.Error())
+		}
+		sigStr := st.String()
+		if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+			if err := clipboard.WriteAll(sigStr); err != nil {
+				fmt.Println("error writing to clipboard: " + err.Error())
+			}
+		}
+		fmt.Print(sigStr + "\r")
+	}
+}
+
 // recordEvents drains the key monitor into the signature for as long as the process runs,
 // reprinting the signature after each event and copying it on backslash.
 func recordEvents(st *state.State, dir string) {
 	if keylogx.BackgroundWorkerAllowed {
-		spawnBackgroundWorker(dir)
-		ch, err := keylogx.WaitForBackgroundEvents()
-		if err != nil {
-			panic(err)
-		}
-		for e := range ch {
-			//fmt.Println("pop:", e)
-			if err := st.Write(e); err != nil {
-				fmt.Println("error writing event: " + err.Error())
-			}
-			sigStr := st.String()
-			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
-				if err := clipboard.WriteAll(sigStr); err != nil {
-					fmt.Println("error writing to clipboard: " + err.Error())
-				}
-			}
-			fmt.Print(sigStr + "\r")
-		}
+		recordEventsBackgroundWorker(st, dir)
 	} else {
-		for {
-			e, ok := keyMonitor.pop()
-			//fmt.Println("pop:", e, ok)
-			if !ok {
-				// This is mostly just a problem on windows, as we need a better way to filter out OS events
-				// we don't care about (or pop needs to loop though them)
-				const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
-				time.Sleep(inputRefreshRate)
-				continue
-			}
-			if err := st.Write(e); err != nil {
-				fmt.Println("error writing event: " + err.Error())
-			}
-			sigStr := st.String()
-			if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
-				if err := clipboard.WriteAll(sigStr); err != nil {
-					fmt.Println("error writing to clipboard: " + err.Error())
-				}
-			}
-			fmt.Print(sigStr + "\r")
-		}
+		recordEventsForeground(st)
 	}
 }
 
@@ -266,6 +274,8 @@ type cliOptions struct {
 	backgroundWorker bool
 	guiMode          bool
 }
+
+var errBadBackgroundWorkerOS = errors.New("background workers not supported on this operating system")
 
 // parseFlags reads the command line. -help and -version are handled here and exit the
 // process rather than coming back as options.
@@ -280,7 +290,7 @@ func parseFlags() (cliOptions, error) {
 		return cliOptions{}, fmt.Errorf("parsing the command line: %w", err)
 	}
 	if *backgroundWorker && !keylogx.BackgroundWorkerAllowed {
-		return cliOptions{}, fmt.Errorf("background workers not supported on this operating system")
+		return cliOptions{}, errBadBackgroundWorkerOS
 	}
 	if *storageDir == "" {
 		dir, err := defaultStorageDir()
@@ -333,7 +343,7 @@ func keepBackgroundFileAlive(dir string) {
 		}
 		defer f.Close()
 		timeNow := strconv.FormatInt(time.Now().Unix(), 10)
-		_, err = f.Write([]byte(timeNow))
+		_, err = f.WriteString(timeNow)
 		if err != nil {
 			fmt.Printf("failed to write to known file: %v\n", err)
 			return
@@ -365,8 +375,7 @@ func startBackgroundOnly(dir string) error {
 			time.Sleep(inputRefreshRate)
 			continue
 		}
-		fmt.Println("background pop", e)
-		//fmt.Println("writing event", e)
+		// fmt.Println("writing event", e)
 		select {
 		case w <- e:
 		default:

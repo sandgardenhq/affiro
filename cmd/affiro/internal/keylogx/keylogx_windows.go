@@ -58,7 +58,7 @@ func handleConn(c net.Conn, ch chan<- asig.Event) {
 		_, err := io.ReadFull(c, pBytes)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				//fmt.Println("EOF")
+				// fmt.Println("EOF")
 				return
 			}
 			fmt.Println("err reading", err)
