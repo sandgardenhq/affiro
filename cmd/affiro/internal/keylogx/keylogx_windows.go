@@ -121,7 +121,7 @@ func strTo4Bytes(s string) [4]byte {
 		return [4]byte(b[:4])
 	}
 	b4 := [4]byte{}
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if i >= len(b) {
 			break
 		}

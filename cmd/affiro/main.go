@@ -61,7 +61,7 @@ func main() {
 func run() error {
 	cfg, err := internal.ParseFlags()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse input arguments: %w", err)
 	}
 	if cfg.BackgroundWorker {
 		return startBackgroundOnly(cfg.StorageDir)
@@ -537,7 +537,10 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode, s
 
 	cursor := &viewBarCursor{x: viewBar.X(), y: nextViewBarY}
 	for _, vb := range vbButtons {
-		drawViewBarButton(ctx, vb, cursor, &page, darkMode, showUnfinishedPages)
+		if !showUnfinishedPages && vb.unfinished {
+			continue
+		}
+		drawViewBarButton(ctx, vb, cursor, &page, darkMode)
 	}
 
 	if showUnfinishedPages {
@@ -877,7 +880,7 @@ type viewBarCursor struct {
 }
 
 // drawViewBarButton draws one of the buttons running down the view bar.
-func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCursor, page *PageName, darkMode, showUnfinishedPages bool) {
+func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCursor, page *PageName, darkMode bool) {
 	nextViewBarY := cursor.y
 	sprite := oakx.LoadSVG(imagesFS, path.Join("images", vb.iconPath), viewBarButtonInnerSize, viewBarButtonInnerSize, colors.HexDarkGray)
 	sprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
@@ -907,9 +910,6 @@ func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCurs
 		starting = oakx.StateActiveUnhover
 	}
 	layers := []int{1, 1}
-	if vb.unfinished && !showUnfinishedPages {
-		layers = []int{}
-	}
 	icon := btn.New(ctx,
 		btn.Layers(layers...),
 		btn.Renderable(render.NewSwitch(starting, swMap)),

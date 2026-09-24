@@ -59,10 +59,10 @@ func checkForUpdate(baseURL string) {
 
 type CLIConfig struct {
 	StorageDir          string
+	APIURL              string
 	BackgroundWorker    bool
 	GUIMode             bool
 	ShowUnfinishedPages bool
-	APIURL              string
 }
 
 // defaultStorageDir is ~/.affiro, created if it is not there yet.
