@@ -3,15 +3,12 @@ package main
 import (
 	"context"
 	"embed"
-	"errors"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"path"
@@ -37,10 +34,9 @@ import (
 	"github.com/pkg/browser"
 	"github.com/sandgardenhq/affiro/asig"
 	"github.com/sandgardenhq/affiro/asig/keylog"
-	"github.com/sandgardenhq/affiro/client"
+	"github.com/sandgardenhq/affiro/cmd/affiro/internal"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/asigx"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/auth"
-	"github.com/sandgardenhq/affiro/cmd/affiro/internal/cliupdate"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/colors"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/keylogx"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/oakx"
@@ -56,7 +52,6 @@ import (
 
 //go:embed images
 var imagesFS embed.FS
-var showUnfinishedPages bool
 
 // keyMonitor holds whichever keylog.Monitor Start() most recently produced, so
 // that the event-polling goroutine and the shutdown paths (SIGINT/SIGTERM, GUI
@@ -94,68 +89,9 @@ func (h *monitorHolder) stop() {
 }
 
 func main() {
-	showUnfinishedPages = os.Getenv("SHOW_UNFINISHED_PAGES") == "true"
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-var fullVersion = "affiro " + buildinfo.Version
-
-// errHelp is returned when os.Args is empty, leaving no subcommand to read.
-var errHelp = errors.New(helpText)
-
-const helpText = `affiro CLI
-
-usage: affiro [-gui]`
-
-// apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
-// point at a local API server), otherwise the app.affiro.com host the client package also
-// defaults to. It is what a caller passes to client.WithHost.
-func apiBaseURL() string {
-	if baseURL := os.Getenv("AFFIRO_API_BASE_URL"); baseURL != "" {
-		return baseURL
-	}
-	return client.DefaultHost
-}
-
-// checkForUpdate reports whether a newer affiro build is published and, if so, applies it to
-// the currently running executable in place. Any failure (network, API, or apply) prints a
-// message and returns rather than crashing, so -version stays usable when the affiro API is
-// unreachable.
-func checkForUpdate() {
-	baseURL := apiBaseURL()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result, err := cliupdate.Check(ctx, http.DefaultClient, baseURL, buildinfo.Version)
-	if err != nil {
-		fmt.Println("could not check for updates:", err)
-		return
-	}
-	if !result.UpdateAvailable {
-		fmt.Println("up to date")
-		return
-	}
-	fmt.Printf("a newer build is available: %s, updating...\n", result.LatestVersion)
-	if err := cliupdate.Apply(ctx, http.DefaultClient, baseURL, result.DownloadPath, ""); err != nil {
-		fmt.Println("could not apply the update:", err)
-		return
-	}
-	fmt.Printf("updated to %s\n", result.LatestVersion)
-}
-
-// defaultStorageDir is ~/.affiro, created if it is not there yet.
-func defaultStorageDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locating the home directory: %w", err)
-	}
-	dir := filepath.Join(homeDir, ".affiro")
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
-	}
-	return dir, nil
 }
 
 const reservedBackgroundFilePath = ".background-running"
@@ -267,50 +203,6 @@ func recordEvents(st *state.State, dir string) {
 	}
 }
 
-// cliOptions is what the command line asked for, once the flags that just print and exit
-// have been dealt with.
-type cliOptions struct {
-	storageDir       string
-	backgroundWorker bool
-	guiMode          bool
-}
-
-var errBadBackgroundWorkerOS = errors.New("background workers not supported on this operating system")
-
-// parseFlags reads the command line. -help and -version are handled here and exit the
-// process rather than coming back as options.
-func parseFlags() (cliOptions, error) {
-	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
-	guiMode := flagSet.Bool("gui", false, "run in gui mode")
-	backgroundWorker := flagSet.Bool("background-worker", false, "run a background worker (windows only)")
-	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
-	showVersion := flagSet.Bool("version", false, "print version and exit")
-	showHelp := flagSet.Bool("help", false, "print help text and exit")
-	if err := flagSet.Parse(os.Args[1:]); err != nil {
-		return cliOptions{}, fmt.Errorf("parsing the command line: %w", err)
-	}
-	if *backgroundWorker && !keylogx.BackgroundWorkerAllowed {
-		return cliOptions{}, errBadBackgroundWorkerOS
-	}
-	if *storageDir == "" {
-		dir, err := defaultStorageDir()
-		if err != nil {
-			return cliOptions{}, err
-		}
-		*storageDir = dir
-	}
-	switch {
-	case *showHelp:
-		fmt.Println(helpText)
-		os.Exit(255)
-	case *showVersion:
-		fmt.Println(fullVersion)
-		checkForUpdate()
-		os.Exit(254)
-	}
-	return cliOptions{storageDir: *storageDir, guiMode: *guiMode, backgroundWorker: *backgroundWorker}, nil
-}
-
 // startBackground kicks off the work that runs for as long as the process does: flushing the
 // signature to disk, draining key events into it, and stopping the monitor on a signal.
 func startBackground(st *state.State, dir string) {
@@ -384,24 +276,21 @@ func startBackgroundOnly(dir string) error {
 }
 
 func run() error {
-	if len(os.Args) == 0 {
-		return errHelp
-	}
-	opts, err := parseFlags()
+	cfg, err := internal.ParseFlags()
 	if err != nil {
 		return err
 	}
-	if opts.backgroundWorker {
-		return startBackgroundOnly(opts.storageDir)
+	if cfg.BackgroundWorker {
+		return startBackgroundOnly(cfg.StorageDir)
 	}
 	fmt.Println(`backslash ('\') to copy`)
-	st, err := state.New(context.Background(), opts.storageDir, time.Hour, apiBaseURL())
+	st, err := state.New(context.Background(), cfg.StorageDir, time.Hour, cfg.APIURL)
 	if err != nil {
 		return fmt.Errorf("failed to open signature store: %w", err)
 	}
-	startBackground(st, opts.storageDir)
-	if opts.guiMode {
-		return guiMonitor(st)
+	startBackground(st, cfg.StorageDir)
+	if cfg.GUIMode {
+		return guiMonitor(st, cfg)
 	}
 	if !keylogx.BackgroundWorkerAllowed {
 		mon := keylog.NewMonitor()
@@ -434,7 +323,7 @@ const tallWindowHeight = 530 * pixelMagnifier
 
 var globalDarkMode bool
 
-func guiMonitor(st *state.State) error {
+func guiMonitor(st *state.State, cfg internal.CLIConfig) error {
 	oak.SetFS(imagesFS)
 	// Note: this relies on a double-app setup;
 	// oak has a glfw/cocoa app which monitors for its own events,
@@ -491,7 +380,7 @@ func guiMonitor(st *state.State) error {
 					return 0
 				})
 			}
-			renderScene(ctx, st, PageNameHome, globalDarkMode)
+			renderScene(ctx, st, PageNameHome, globalDarkMode, cfg.ShowUnfinishedPages)
 			// TODO: other pages
 		},
 	})
@@ -618,7 +507,7 @@ func viewButtonResize(ctx *scene.Context, page *PageName, vb viewBarButton) func
 
 const homeSceneName = "home"
 
-func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bool) {
+func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode, showUnfinishedPages bool) {
 	h := windowHeights[page]
 	maxHistoryViewportHeight := 10000
 	ctx.Window.SetViewportBounds(intgeom.NewRect2(0, 0, 640, h))
@@ -684,7 +573,7 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 
 	cursor := &viewBarCursor{x: viewBar.X(), y: nextViewBarY}
 	for _, vb := range vbButtons {
-		drawViewBarButton(ctx, vb, cursor, &page, darkMode)
+		drawViewBarButton(ctx, vb, cursor, &page, darkMode, showUnfinishedPages)
 	}
 
 	if showUnfinishedPages {
@@ -1024,7 +913,7 @@ type viewBarCursor struct {
 }
 
 // drawViewBarButton draws one of the buttons running down the view bar.
-func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCursor, page *PageName, darkMode bool) {
+func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCursor, page *PageName, darkMode, showUnfinishedPages bool) {
 	nextViewBarY := cursor.y
 	sprite := oakx.LoadSVG(imagesFS, path.Join("images", vb.iconPath), viewBarButtonInnerSize, viewBarButtonInnerSize, colors.HexDarkGray)
 	sprite.SetPos(10*pixelMagnifier, 10*pixelMagnifier)
