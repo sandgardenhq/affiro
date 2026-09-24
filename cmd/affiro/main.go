@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -53,45 +52,37 @@ import (
 //go:embed images
 var imagesFS embed.FS
 
-// keyMonitor holds whichever keylog.Monitor Start() most recently produced, so
-// that the event-polling goroutine and the shutdown paths (SIGINT/SIGTERM, GUI
-// window-close) can reach it regardless of which goroutine called Start.
-var keyMonitor monitorHolder
-
-type monitorHolder struct {
-	mon keylog.Monitor
-	mu  sync.Mutex
-}
-
-func (h *monitorHolder) set(m keylog.Monitor) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.mon = m
-}
-
-func (h *monitorHolder) pop() (asig.Event, bool) {
-	h.mu.Lock()
-	m := h.mon
-	h.mu.Unlock()
-	if m == nil {
-		return nil, false
-	}
-	return m.Pop()
-}
-
-func (h *monitorHolder) stop() {
-	h.mu.Lock()
-	m := h.mon
-	h.mu.Unlock()
-	if m != nil {
-		m.Stop()
-	}
-}
-
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	cfg, err := internal.ParseFlags()
+	if err != nil {
+		return err
+	}
+	if cfg.BackgroundWorker {
+		return startBackgroundOnly(cfg.StorageDir)
+	}
+	fmt.Println(`backslash ('\') to copy`)
+	st, err := state.New(context.Background(), cfg.StorageDir, time.Hour, cfg.APIURL)
+	if err != nil {
+		return fmt.Errorf("failed to open signature store: %w", err)
+	}
+	startBackground(st, cfg.StorageDir)
+	if cfg.GUIMode {
+		return guiMonitor(st, cfg)
+	}
+	if !keylogx.BackgroundWorkerAllowed {
+		mon := keylog.NewMonitor()
+		internal.GlobalMonitor.Set(mon)
+		if err := mon.Start(); err != nil {
+			return fmt.Errorf("failed to start keyboard monitor: %w", err)
+		}
+	}
+	select {}
 }
 
 const reservedBackgroundFilePath = ".background-running"
@@ -171,7 +162,7 @@ func recordEventsBackgroundWorker(st *state.State, dir string) {
 
 func recordEventsForeground(st *state.State) {
 	for {
-		e, ok := keyMonitor.pop()
+		e, ok := internal.GlobalMonitor.Pop()
 		// fmt.Println("pop:", e, ok)
 		if !ok {
 			// This is mostly just a problem on windows, as we need a better way to filter out OS events
@@ -219,7 +210,7 @@ func startBackground(st *state.State, dir string) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		keyMonitor.stop()
+		internal.GlobalMonitor.Stop()
 		os.Exit(1)
 	}()
 }
@@ -256,10 +247,10 @@ func startBackgroundOnly(dir string) error {
 	if err := mon.Start(); err != nil {
 		return fmt.Errorf("failed to start keyboard monitor: %w", err)
 	}
-	keyMonitor.set(mon)
+	internal.GlobalMonitor.Set(mon)
 	w := keylogx.BackgroundEventsWriter()
 	for {
-		e, ok := keyMonitor.pop()
+		e, ok := internal.GlobalMonitor.Pop()
 		if !ok {
 			// This is mostly just a problem on windows, as we need a better way to filter out OS events
 			// we don't care about (or pop needs to loop though them)
@@ -273,33 +264,6 @@ func startBackgroundOnly(dir string) error {
 		default:
 		}
 	}
-}
-
-func run() error {
-	cfg, err := internal.ParseFlags()
-	if err != nil {
-		return err
-	}
-	if cfg.BackgroundWorker {
-		return startBackgroundOnly(cfg.StorageDir)
-	}
-	fmt.Println(`backslash ('\') to copy`)
-	st, err := state.New(context.Background(), cfg.StorageDir, time.Hour, cfg.APIURL)
-	if err != nil {
-		return fmt.Errorf("failed to open signature store: %w", err)
-	}
-	startBackground(st, cfg.StorageDir)
-	if cfg.GUIMode {
-		return guiMonitor(st, cfg)
-	}
-	if !keylogx.BackgroundWorkerAllowed {
-		mon := keylog.NewMonitor()
-		keyMonitor.set(mon)
-		if err := mon.Start(); err != nil {
-			return fmt.Errorf("failed to start keyboard monitor: %w", err)
-		}
-	}
-	select {}
 }
 
 // titleBarHeight is the height of the window's own title bar.
@@ -351,7 +315,7 @@ func guiMonitor(st *state.State, cfg internal.CLIConfig) error {
 				if err := mon.Start(); err != nil {
 					fmt.Println("failed to start key monitor: ", err.Error())
 				} else {
-					keyMonitor.set(mon)
+					internal.GlobalMonitor.Set(mon)
 				}
 			}
 			if !keylogx.LocalKeyEventsPresent {
@@ -1447,7 +1411,7 @@ func buildQRCode(st *state.State) (*render.Sprite, func()) {
 func initTitlebar(ctx *scene.Context, titleBarHeight float64, darkMode bool) {
 	event.GlobalBind(ctx, titlebar.WindowClosingEvent, func(struct{}) event.Response {
 		if !keylogx.BackgroundWorkerAllowed {
-			keyMonitor.stop()
+			internal.GlobalMonitor.Stop()
 		}
 		return 0
 	})
