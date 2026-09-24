@@ -39,6 +39,13 @@ func selectBackend(override, sessionType string) keylogBackend {
 	return x11Backend
 }
 
+func NewMonitor() Monitor {
+	backend := selectBackend(os.Getenv("AFFIRO_KEYLOG_BACKEND"), os.Getenv("XDG_SESSION_TYPE"))
+	return monitor{
+		backend: backend,
+	}
+}
+
 type monitor struct {
 	backend keylogBackend
 }
@@ -48,20 +55,14 @@ func (m monitor) Pop() (asig.Event, bool) {
 }
 
 func (monitor) Stop() {
-	// Neither the x11 nor evdev backend supports graceful shutdown today;
+	// NOP
 }
 
-// Start picks a backend (see selectBackend) and begins capturing in the
-// background, returning immediately. The chosen backend's start function
-// blocks for the life of the process, so any error it returns after this
-// point is only logged, not returned — callers that need the Monitor to
-// have started successfully cannot observe that here.
-func Start() (Monitor, error) {
-	backend := selectBackend(os.Getenv("AFFIRO_KEYLOG_BACKEND"), os.Getenv("XDG_SESSION_TYPE"))
+func (m monitor) Start() error {
 	go func() {
-		if err := backend.start(); err != nil {
+		if err := m.backend.start(); err != nil {
 			fmt.Println("failed to start key monitor: " + err.Error())
 		}
 	}()
-	return monitor{backend: backend}, nil
+	return nil
 }

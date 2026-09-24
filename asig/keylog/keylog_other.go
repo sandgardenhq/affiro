@@ -2,8 +2,6 @@
 
 package keylog
 
-import "errors"
-
-func Start() (Monitor, error) {
-	return nil, errors.New("unimplemented")
+func NewMonitor() Monitor {
+	panic("unimplemented")
 }

@@ -360,8 +360,8 @@ func keepBackgroundFileAlive(dir string) {
 func startBackgroundOnly(dir string) error {
 	fmt.Println("starting background worker")
 	go keepBackgroundFileAlive(dir)
-	mon, err := keylog.Start()
-	if err != nil {
+	mon := keylog.NewMonitor()
+	if err := mon.Start(); err != nil {
 		return fmt.Errorf("failed to start keyboard monitor: %w", err)
 	}
 	keyMonitor.set(mon)
@@ -404,11 +404,11 @@ func run() error {
 		return guiMonitor(st)
 	}
 	if !keylogx.BackgroundWorkerAllowed {
-		mon, err := keylog.Start()
-		if err != nil {
+		mon := keylog.NewMonitor()
+		keyMonitor.set(mon)
+		if err := mon.Start(); err != nil {
 			return fmt.Errorf("failed to start keyboard monitor: %w", err)
 		}
-		keyMonitor.set(mon)
 	}
 	select {}
 }
@@ -455,12 +455,11 @@ func guiMonitor(st *state.State) error {
 	}
 	err = oak.AddScene(homeSceneName, scene.Scene{
 		Start: func(ctx *scene.Context) {
-			// TODO: this hangs on linux but not on OSX, very annoying to program around
 			// NB: do not move this from this scene; if this is moved to a different scene, it stops tracking events
-			// TODO: keep this here for osx/linux1, move it to init for windows
+			// TODO: keep this here for osx/linux, move it to init for windows
 			if !keylogx.BackgroundWorkerAllowed {
-				mon, err := keylog.Start()
-				if err != nil {
+				mon := keylog.NewMonitor()
+				if err := mon.Start(); err != nil {
 					fmt.Println("failed to start key monitor: ", err.Error())
 				} else {
 					keyMonitor.set(mon)
