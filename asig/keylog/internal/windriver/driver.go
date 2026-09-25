@@ -37,7 +37,7 @@ func StartKeyMonitor() error {
 	tmp := os.TempDir()
 	fp := filepath.Join(tmp, "keylog.dll")
 	if err := os.RemoveAll(fp); err != nil {
-		fmt.Println(err)
+		fmt.Println("failed to remove keylog path", err)
 	}
 	if err := os.WriteFile(fp, keylogDLL, 0777); err != nil {
 		return err
@@ -66,7 +66,7 @@ func StartKeyMonitor() error {
 				}
 				return
 			}
-			//fmt.Println("got connection")
+			// fmt.Println("got connection")
 			go handleConn(conn)
 		}
 	}()
@@ -74,7 +74,7 @@ func StartKeyMonitor() error {
 	uninstall = keylog.MustFindProc("Uninstall")
 	install := keylog.MustFindProc("Install")
 	install.Call()
-	//fmt.Println("called install")
+	// fmt.Println("called install")
 	return nil
 }
 
@@ -97,7 +97,7 @@ func Pop() (asig.Event, bool) {
 		switch next.Code {
 		case 0:
 			isDown = true
-			//fmt.Print("down: ")
+			// fmt.Print("down: ")
 			const prevMask = 1 << 30
 			if repeat := next.LParam&prevMask == prevMask; repeat {
 				//	fmt.Print("repeat: ")
@@ -125,7 +125,7 @@ func Pop() (asig.Event, bool) {
 
 func Uninstall() uintptr {
 	if closeListenerFunc != nil {
-		//fmt.Println("closing listener")
+		// fmt.Println("closing listener")
 		closeListenerFunc()
 	}
 	ret, _, _ := uninstall.Call()
@@ -161,7 +161,7 @@ func handleConn(c net.Conn) {
 		_, err := io.ReadFull(c, pBytes)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				//fmt.Println("EOF")
+				// fmt.Println("EOF")
 				return
 			}
 			fmt.Println("err reading", err)
@@ -173,7 +173,7 @@ func handleConn(c net.Conn) {
 			WParam: binary.LittleEndian.Uint64(pBytes[16:24]),
 			LParam: binary.LittleEndian.Uint64(pBytes[24:32]),
 		}
-		//fmt.Println("payload:", p)
+		// fmt.Println("payload:", p)
 		eventsMutex.Lock()
 		eventQueue = append(eventQueue, p)
 		eventsMutex.Unlock()

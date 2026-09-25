@@ -3,21 +3,18 @@ package main
 import (
 	"context"
 	"embed"
-	"errors"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -36,10 +33,9 @@ import (
 	"github.com/pkg/browser"
 	"github.com/sandgardenhq/affiro/asig"
 	"github.com/sandgardenhq/affiro/asig/keylog"
-	"github.com/sandgardenhq/affiro/client"
+	"github.com/sandgardenhq/affiro/cmd/affiro/internal"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/asigx"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/auth"
-	"github.com/sandgardenhq/affiro/cmd/affiro/internal/cliupdate"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/colors"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/keylogx"
 	"github.com/sandgardenhq/affiro/cmd/affiro/internal/oakx"
@@ -55,113 +51,119 @@ import (
 
 //go:embed images
 var imagesFS embed.FS
-var showUnfinishedPages bool
-
-// keyMonitor holds whichever keylog.Monitor Start() most recently produced, so
-// that the event-polling goroutine and the shutdown paths (SIGINT/SIGTERM, GUI
-// window-close) can reach it regardless of which goroutine called Start.
-var keyMonitor monitorHolder
-
-type monitorHolder struct {
-	mon keylog.Monitor
-	mu  sync.Mutex
-}
-
-func (h *monitorHolder) set(m keylog.Monitor) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.mon = m
-}
-
-func (h *monitorHolder) pop() (asig.Event, bool) {
-	h.mu.Lock()
-	m := h.mon
-	h.mu.Unlock()
-	if m == nil {
-		return nil, false
-	}
-	return m.Pop()
-}
-
-func (h *monitorHolder) stop() {
-	h.mu.Lock()
-	m := h.mon
-	h.mu.Unlock()
-	if m != nil {
-		m.Stop()
-	}
-}
 
 func main() {
-	showUnfinishedPages = os.Getenv("SHOW_UNFINISHED_PAGES") == "true"
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-var fullVersion = "affiro " + buildinfo.Version
-
-// errHelp is returned when os.Args is empty, leaving no subcommand to read.
-var errHelp = errors.New(helpText)
-
-const helpText = `affiro CLI
-
-usage: affiro [-gui]`
-
-// apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
-// point at a local API server), otherwise the app.affiro.com host the client package also
-// defaults to. It is what a caller passes to client.WithHost.
-func apiBaseURL() string {
-	if baseURL := os.Getenv("AFFIRO_API_BASE_URL"); baseURL != "" {
-		return baseURL
-	}
-	return client.DefaultHost
-}
-
-// checkForUpdate reports whether a newer affiro build is published and, if so, applies it to
-// the currently running executable in place. Any failure (network, API, or apply) prints a
-// message and returns rather than crashing, so -version stays usable when the affiro API is
-// unreachable.
-func checkForUpdate() {
-	baseURL := apiBaseURL()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result, err := cliupdate.Check(ctx, http.DefaultClient, baseURL, buildinfo.Version)
+func run() error {
+	cfg, err := internal.ParseFlags()
 	if err != nil {
-		fmt.Println("could not check for updates:", err)
-		return
+		return fmt.Errorf("failed to parse input arguments: %w", err)
 	}
-	if !result.UpdateAvailable {
-		fmt.Println("up to date")
-		return
+	if cfg.BackgroundWorker {
+		return startBackgroundOnly(cfg.StorageDir)
 	}
-	fmt.Printf("a newer build is available: %s, updating...\n", result.LatestVersion)
-	if err := cliupdate.Apply(ctx, http.DefaultClient, baseURL, result.DownloadPath, ""); err != nil {
-		fmt.Println("could not apply the update:", err)
-		return
-	}
-	fmt.Printf("updated to %s\n", result.LatestVersion)
-}
-
-// defaultStorageDir is ~/.affiro, created if it is not there yet.
-func defaultStorageDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	fmt.Println(`backslash ('\') to copy`)
+	st, err := state.New(context.Background(), cfg.StorageDir, time.Hour, cfg.APIURL)
 	if err != nil {
-		return "", fmt.Errorf("locating the home directory: %w", err)
+		return fmt.Errorf("failed to open signature store: %w", err)
 	}
-	dir := filepath.Join(homeDir, ".affiro")
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
+	startBackground(st, cfg.StorageDir)
+	if cfg.GUIMode {
+		return guiMonitor(st, cfg)
 	}
-	return dir, nil
+	if !keylogx.BackgroundWorkerAllowed {
+		mon := keylog.NewMonitor()
+		internal.GlobalMonitor.Set(mon)
+		if err := mon.Start(); err != nil {
+			return fmt.Errorf("failed to start keyboard monitor: %w", err)
+		}
+	}
+	select {}
 }
 
-// recordEvents drains the key monitor into the signature for as long as the process runs,
-// reprinting the signature after each event and copying it on backslash.
-func recordEvents(st *state.State) {
+const reservedBackgroundFilePath = ".background-running"
+
+func spawnBackgroundWorker(dir string) {
+	// TODO: log these, and add a verbose flag to print these logs
+	// fmt.Println("spawning background worker")
+	knownPath := filepath.Join(dir, reservedBackgroundFilePath)
+	spawned := false
+	spawn := func() {
+		if spawned {
+			return
+		}
+		if err := keylogx.SpawnBackgroundWorker(); err != nil {
+			panic(err)
+		}
+		spawned = true
+		for {
+			time.Sleep(1 * time.Second)
+			f, err := os.Open(knownPath)
+			if err == nil {
+				fmt.Println("file found")
+				f.Close()
+				return
+			}
+			// fmt.Println("opening file error", err)
+		}
+	}
 	for {
-		e, ok := keyMonitor.pop()
+		f, err := os.Open(knownPath)
+		if err != nil {
+			// fmt.Println("file not found, spawning")
+			spawn()
+			continue
+		}
+		content, err := io.ReadAll(f)
+		if err != nil {
+			panic(err)
+		}
+		secs, err := strconv.ParseInt(string(content), 10, 64)
+		if err != nil {
+			// fmt.Println("invalid content found in background running file")
+			spawn()
+			continue
+		}
+		t := time.Unix(secs, 0)
+		if time.Since(t) > 61*time.Second {
+			// fmt.Println("background running file is too old!")
+			spawn()
+			continue
+		}
+		// fmt.Println("recent background running file found")
+		return
+	}
+}
+
+func recordEventsBackgroundWorker(st *state.State, dir string) {
+	spawnBackgroundWorker(dir)
+	ch, err := keylogx.WaitForBackgroundEvents()
+	if err != nil {
+		panic(err)
+	}
+	for e := range ch {
+		// fmt.Println("pop:", e)
+		if err := st.Write(e); err != nil {
+			fmt.Println("error writing event: " + err.Error())
+		}
+		sigStr := st.String()
+		if v, ok := e.(asig.KeyDownEvent); ok && v.Key == key.CodeBackslash {
+			if err := clipboard.WriteAll(sigStr); err != nil {
+				fmt.Println("error writing to clipboard: " + err.Error())
+			}
+		}
+		fmt.Print(sigStr + "\r")
+	}
+}
+
+func recordEventsForeground(st *state.State) {
+	for {
+		e, ok := internal.GlobalMonitor.Pop()
+		// fmt.Println("pop:", e, ok)
 		if !ok {
 			// This is mostly just a problem on windows, as we need a better way to filter out OS events
 			// we don't care about (or pop needs to loop though them)
@@ -182,46 +184,19 @@ func recordEvents(st *state.State) {
 	}
 }
 
-// cliOptions is what the command line asked for, once the flags that just print and exit
-// have been dealt with.
-type cliOptions struct {
-	storageDir string
-	guiMode    bool
-}
-
-// parseFlags reads the command line. -help and -version are handled here and exit the
-// process rather than coming back as options.
-func parseFlags() (cliOptions, error) {
-	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
-	guiMode := flagSet.Bool("gui", false, "run in gui mode")
-	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
-	showVersion := flagSet.Bool("version", false, "print version and exit")
-	showHelp := flagSet.Bool("help", false, "print help text and exit")
-	if err := flagSet.Parse(os.Args[1:]); err != nil {
-		return cliOptions{}, fmt.Errorf("parsing the command line: %w", err)
+// recordEvents drains the key monitor into the signature for as long as the process runs,
+// reprinting the signature after each event and copying it on backslash.
+func recordEvents(st *state.State, dir string) {
+	if keylogx.BackgroundWorkerAllowed {
+		recordEventsBackgroundWorker(st, dir)
+	} else {
+		recordEventsForeground(st)
 	}
-	if *storageDir == "" {
-		dir, err := defaultStorageDir()
-		if err != nil {
-			return cliOptions{}, err
-		}
-		*storageDir = dir
-	}
-	switch {
-	case *showHelp:
-		fmt.Println(helpText)
-		os.Exit(255)
-	case *showVersion:
-		fmt.Println(fullVersion)
-		checkForUpdate()
-		os.Exit(254)
-	}
-	return cliOptions{storageDir: *storageDir, guiMode: *guiMode}, nil
 }
 
 // startBackground kicks off the work that runs for as long as the process does: flushing the
 // signature to disk, draining key events into it, and stopping the monitor on a signal.
-func startBackground(st *state.State) {
+func startBackground(st *state.State, dir string) {
 	const storageFlushRate = 30 * time.Second // TODO: make user configurable
 	go func() {
 		for range time.After(storageFlushRate) {
@@ -230,41 +205,65 @@ func startBackground(st *state.State) {
 			}
 		}
 	}()
-	// TODO: library utlity for this:
-	go recordEvents(st)
+	go recordEvents(st, dir)
 	c := make(chan os.Signal, 10)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		keyMonitor.stop()
+		internal.GlobalMonitor.Stop()
 		os.Exit(1)
 	}()
 }
 
-func run() error {
-	if len(os.Args) == 0 {
-		return errHelp
+func keepBackgroundFileAlive(dir string) {
+	check := func() {
+		fmt.Println("keeping background file alive still")
+		knownPath := filepath.Join(dir, reservedBackgroundFilePath)
+		f, err := os.Create(knownPath)
+		if err != nil {
+			fmt.Printf("failed to create known file: %v\n", err)
+			return
+		}
+		defer f.Close()
+		timeNow := strconv.FormatInt(time.Now().Unix(), 10)
+		_, err = f.WriteString(timeNow)
+		if err != nil {
+			fmt.Printf("failed to write to known file: %v\n", err)
+			return
+		}
 	}
-	opts, err := parseFlags()
-	if err != nil {
-		return err
+	check()
+	t := time.NewTicker(30 * time.Second)
+	for {
+		<-t.C
+		check()
 	}
-	fmt.Println(`backslash ('\') to copy`)
-	st, err := state.New(context.Background(), opts.storageDir, time.Hour, apiBaseURL())
-	if err != nil {
-		return fmt.Errorf("opening the signature store: %w", err)
+}
+
+func startBackgroundOnly(dir string) error {
+	fmt.Println("starting background worker")
+	go keepBackgroundFileAlive(dir)
+	mon := keylog.NewMonitor()
+	if err := mon.Start(); err != nil {
+		return fmt.Errorf("failed to start keyboard monitor: %w", err)
 	}
-	startBackground(st)
-	if opts.guiMode {
-		return guiMonitor(st)
+	internal.GlobalMonitor.Set(mon)
+	w := keylogx.BackgroundEventsWriter()
+	for {
+		e, ok := internal.GlobalMonitor.Pop()
+		if !ok {
+			// This is mostly just a problem on windows, as we need a better way to filter out OS events
+			// we don't care about (or pop needs to loop though them)
+			const inputRefreshRate = 20 * time.Millisecond // TODO: make user configurable
+			time.Sleep(inputRefreshRate)
+			continue
+		}
+		// fmt.Println("writing event", e)
+		select {
+		case w <- e:
+		default:
+		}
 	}
-	// todo: make this killable
-	mon, err := keylog.Start()
-	if err != nil {
-		return fmt.Errorf("starting the keyboard monitor: %w", err)
-	}
-	keyMonitor.set(mon)
-	select {}
 }
 
 // titleBarHeight is the height of the window's own title bar.
@@ -288,7 +287,7 @@ const tallWindowHeight = 530 * pixelMagnifier
 
 var globalDarkMode bool
 
-func guiMonitor(st *state.State) error {
+func guiMonitor(st *state.State, cfg internal.CLIConfig) error {
 	oak.SetFS(imagesFS)
 	// Note: this relies on a double-app setup;
 	// oak has a glfw/cocoa app which monitors for its own events,
@@ -309,14 +308,15 @@ func guiMonitor(st *state.State) error {
 	}
 	err = oak.AddScene(homeSceneName, scene.Scene{
 		Start: func(ctx *scene.Context) {
-			// TODO: this hangs on linux but not on OSX, very annoying to program around
 			// NB: do not move this from this scene; if this is moved to a different scene, it stops tracking events
-			// TODO: keep this here for osx/linux1, move it to init for windows
-			mon, err := keylog.Start()
-			if err != nil {
-				fmt.Println("failed to start key monitor: ", err.Error())
-			} else {
-				keyMonitor.set(mon)
+			// TODO: keep this here for osx/linux, move it to init for windows
+			if !keylogx.BackgroundWorkerAllowed {
+				mon := keylog.NewMonitor()
+				if err := mon.Start(); err != nil {
+					fmt.Println("failed to start key monitor: ", err.Error())
+				} else {
+					internal.GlobalMonitor.Set(mon)
+				}
 			}
 			if !keylogx.LocalKeyEventsPresent {
 				event.GlobalBind(ctx, mouse.Release, func(ev *mouse.Event) event.Response {
@@ -344,7 +344,7 @@ func guiMonitor(st *state.State) error {
 					return 0
 				})
 			}
-			renderScene(ctx, st, PageNameHome, globalDarkMode)
+			renderScene(ctx, st, PageNameHome, globalDarkMode, cfg.ShowUnfinishedPages)
 			// TODO: other pages
 		},
 	})
@@ -471,7 +471,7 @@ func viewButtonResize(ctx *scene.Context, page *PageName, vb viewBarButton) func
 
 const homeSceneName = "home"
 
-func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bool) {
+func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode, showUnfinishedPages bool) {
 	h := windowHeights[page]
 	maxHistoryViewportHeight := 10000
 	ctx.Window.SetViewportBounds(intgeom.NewRect2(0, 0, 640, h))
@@ -537,6 +537,9 @@ func renderScene(ctx *scene.Context, st *state.State, page PageName, darkMode bo
 
 	cursor := &viewBarCursor{x: viewBar.X(), y: nextViewBarY}
 	for _, vb := range vbButtons {
+		if !showUnfinishedPages && vb.unfinished {
+			continue
+		}
 		drawViewBarButton(ctx, vb, cursor, &page, darkMode)
 	}
 
@@ -907,9 +910,6 @@ func drawViewBarButton(ctx *scene.Context, vb viewBarButton, cursor *viewBarCurs
 		starting = oakx.StateActiveUnhover
 	}
 	layers := []int{1, 1}
-	if vb.unfinished && !showUnfinishedPages {
-		layers = []int{}
-	}
 	icon := btn.New(ctx,
 		btn.Layers(layers...),
 		btn.Renderable(render.NewSwitch(starting, swMap)),
@@ -1323,7 +1323,7 @@ func drawHistoryRow(ctx *scene.Context, sig *asigx.Asig, cols historyColumns, ne
 		c.ShiftPos(13*pixelMagnifier, 13*pixelMagnifier)
 	}
 
-	sv := NewSignalVolumeSprite(0, 0, 18*pixelMagnifier, 18*pixelMagnifier)
+	sv := oakx.NewSignalVolumeSprite(0, 0, 18*pixelMagnifier, 18*pixelMagnifier)
 	sv.SetActions(sig.TotalActions)
 
 	hoverCh := make(chan struct{})
@@ -1410,7 +1410,9 @@ func buildQRCode(st *state.State) (*render.Sprite, func()) {
 
 func initTitlebar(ctx *scene.Context, titleBarHeight float64, darkMode bool) {
 	event.GlobalBind(ctx, titlebar.WindowClosingEvent, func(struct{}) event.Response {
-		keyMonitor.stop()
+		if !keylogx.BackgroundWorkerAllowed {
+			internal.GlobalMonitor.Stop()
+		}
 		return 0
 	})
 	titlebar.New(ctx, func(c titlebar.Constructor) titlebar.Constructor {
@@ -1462,54 +1464,4 @@ func Iff[T any](darkMode bool, a, b T) T {
 		return a
 	}
 	return b
-}
-
-type signalVolumeSprite struct {
-	barColors [5]color.Color
-	*render.Sprite
-	thresholds   [4]int
-	totalActions int
-}
-
-func NewSignalVolumeSprite(x, y float64, w, h int) *signalVolumeSprite {
-	sp := render.NewEmptySprite(x, y, w, h)
-	return &signalVolumeSprite{
-		Sprite: sp,
-		thresholds: [4]int{
-			5,
-			50,
-			300,
-			1500,
-		},
-		barColors: [5]color.Color{
-			0: color.RGBA{128, 0, 0, 255},
-			1: color.RGBA{128, 128, 0, 255},
-			2: color.RGBA{0, 128, 0, 255},
-			3: color.RGBA{0, 200, 0, 255},
-			4: color.RGBA{0, 255, 0, 255},
-		},
-	}
-}
-
-func (s *signalVolumeSprite) SetActions(totalActions int) {
-	s.totalActions = totalActions
-	if s.totalActions == 0 {
-		return
-	}
-	bars := 1
-	for _, v := range s.thresholds {
-		if totalActions < v {
-			break
-		}
-		bars++
-	}
-	color := s.barColors[bars-1]
-	bds := s.GetRGBA().Bounds()
-	barXDistance := bds.Max.X / 6
-	barHeight := bds.Max.Y / 5
-	x := 1
-	for b := range bars {
-		render.DrawLine(s.GetRGBA(), x, bds.Max.Y, x, bds.Max.Y-(barHeight*b), color)
-		x += barXDistance
-	}
 }

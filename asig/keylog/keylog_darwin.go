@@ -7,6 +7,10 @@ import (
 	"github.com/sandgardenhq/affiro/asig/keylog/internal/osxdriver"
 )
 
+func NewMonitor() Monitor {
+	return monitor{}
+}
+
 type monitor struct{}
 
 func (monitor) Pop() (asig.Event, bool) {
@@ -14,14 +18,13 @@ func (monitor) Pop() (asig.Event, bool) {
 }
 
 func (monitor) Stop() {
-	// osxdriver exposes no shutdown hook today; matches the previous
-	// StopKeyMonitor's nop.
+	// NOP
 }
 
-// Start begins capturing in the background and returns immediately.
-// osxdriver.StartKeyMonitor blocks for the life of the process and has no
-// error return, so there is nothing to report if it fails internally.
-func Start() (Monitor, error) {
+// Start has two possible modes:
+// if another cocoa app is running with this process, it will set up its hooks and then return.
+// But if no cocoa app is running, it will block forever.
+func (monitor) Start() error {
 	osxdriver.StartKeyMonitor()
-	return monitor{}, nil
+	return nil
 }

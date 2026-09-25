@@ -7,6 +7,10 @@ import (
 	"github.com/sandgardenhq/affiro/asig/keylog/internal/windriver"
 )
 
+func NewMonitor() Monitor {
+	return monitor{}
+}
+
 type monitor struct{}
 
 func (monitor) Pop() (asig.Event, bool) {
@@ -17,9 +21,9 @@ func (monitor) Stop() {
 	windriver.Uninstall()
 }
 
-func Start() (Monitor, error) {
+func (monitor) Start() error {
 	if err := windriver.StartKeyMonitor(); err != nil {
-		return nil, err
+		return err
 	}
-	return monitor{}, nil
+	return nil
 }
