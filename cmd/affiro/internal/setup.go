@@ -20,7 +20,10 @@ var fullVersion = "affiro " + buildinfo.Version
 
 const helpText = `affiro CLI
 
-usage: affiro [-gui]`
+usage: 
+	affiro [-gui]
+	affiro --version
+	affiro --update`
 
 // apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
 // point at a local API server), otherwise the app.affiro.com host the client package also
@@ -93,6 +96,7 @@ func ParseFlags() (CLIConfig, error) {
 	backgroundWorker := flagSet.Bool("background-worker", false, "run a background worker (windows only)")
 	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
 	showVersion := flagSet.Bool("version", false, "print version and exit")
+	update := flagSet.Bool("update", false, "update this binary")
 	showHelp := flagSet.Bool("help", false, "print help text and exit")
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		return CLIConfig{}, fmt.Errorf("parsing the command line: %w", err)
@@ -114,8 +118,10 @@ func ParseFlags() (CLIConfig, error) {
 		os.Exit(255)
 	case *showVersion:
 		fmt.Println(fullVersion)
-		checkForUpdate(baseURL)
 		os.Exit(254)
+	case *update:
+		checkForUpdate(baseURL)
+		os.Exit(0)
 	}
 	return CLIConfig{
 		StorageDir:          *storageDir,
