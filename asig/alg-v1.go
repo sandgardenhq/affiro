@@ -24,4 +24,4 @@ func (l *Asig) writeV1(ev Event) {
 }
 
 // Version 1:
-// v0, but pauses are now two byes; 0 then the length of the pause / 4 seconds
+// v0, but pauses are now two bytes; 0 then the length of the pause / 4 seconds
