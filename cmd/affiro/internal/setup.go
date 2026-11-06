@@ -22,8 +22,8 @@ const helpText = `affiro CLI
 
 usage: 
 	affiro [-gui]
-	affiro --version
-	affiro --update`
+	affiro version
+	affiro update`
 
 // apiBaseURL returns the affiro API host to talk to: AFFIRO_API_BASE_URL when set (e.g. to
 // point at a local API server), otherwise the app.affiro.com host the client package also
@@ -83,51 +83,90 @@ func defaultStorageDir() (string, error) {
 
 var errBadBackgroundWorkerOS = errors.New("background workers not supported on this operating system")
 
-// ParseFlags reads the command line. -help and -version are handled here and exit the process.
-func ParseFlags() (CLIConfig, error) {
-	// This is a strange condition; all CLI programs generally have their 0th argument as the
-	// program that they are. This is likely dead code.
-	if len(os.Args) == 0 {
+func handleEarlyExitCommands(args []string, fgs flags) {
+	if fgs.showHelp {
 		fmt.Println(helpText)
 		os.Exit(255)
 	}
-	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
-	guiMode := flagSet.Bool("gui", false, "run in gui mode")
-	backgroundWorker := flagSet.Bool("background-worker", false, "run a background worker (windows only)")
-	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
-	showVersion := flagSet.Bool("version", false, "print version and exit")
-	update := flagSet.Bool("update", false, "update this binary")
-	showHelp := flagSet.Bool("help", false, "print help text and exit")
-	if err := flagSet.Parse(os.Args[1:]); err != nil {
-		return CLIConfig{}, fmt.Errorf("parsing the command line: %w", err)
+	printVersion := false
+	update := false
+	commands := 0
+	for _, a := range args {
+		switch a {
+		case "version":
+			printVersion = true
+			commands++
+			continue
+		case "update":
+			update = true
+			commands++
+			continue
+		}
+		if len(a) > 0 && a[0] != '-' {
+			fmt.Println(helpText)
+			os.Exit(255)
+		}
 	}
-	if *backgroundWorker && !keylogx.BackgroundWorkerAllowed {
+	if commands > 1 {
+		fmt.Println(helpText)
+		os.Exit(255)
+	}
+	if update {
+		checkForUpdate(fgs.baseURL)
+		os.Exit(253)
+	}
+	if printVersion {
+		fmt.Println(fullVersion)
+		os.Exit(254)
+	}
+}
+
+type flags struct {
+	storageDir       string
+	baseURL          string
+	showHelp         bool
+	backgroundWorker bool
+	guiMode          bool
+}
+
+func handleCommand(args []string, fgs flags) (CLIConfig, error) {
+	handleEarlyExitCommands(args, fgs)
+
+	if fgs.backgroundWorker && !keylogx.BackgroundWorkerAllowed {
 		return CLIConfig{}, errBadBackgroundWorkerOS
 	}
-	if *storageDir == "" {
+	if fgs.storageDir == "" {
 		dir, err := defaultStorageDir()
 		if err != nil {
 			return CLIConfig{}, err
 		}
-		*storageDir = dir
-	}
-	baseURL := apiBaseURL()
-	switch {
-	case *showHelp:
-		fmt.Println(helpText)
-		os.Exit(255)
-	case *showVersion:
-		fmt.Println(fullVersion)
-		os.Exit(254)
-	case *update:
-		checkForUpdate(baseURL)
-		os.Exit(0)
+		fgs.storageDir = dir
 	}
 	return CLIConfig{
-		StorageDir:          *storageDir,
-		GUIMode:             *guiMode,
-		BackgroundWorker:    *backgroundWorker,
-		APIURL:              baseURL,
+		StorageDir:          fgs.storageDir,
+		GUIMode:             fgs.guiMode,
+		BackgroundWorker:    fgs.backgroundWorker,
+		APIURL:              fgs.baseURL,
 		ShowUnfinishedPages: os.Getenv("SHOW_UNFINISHED_PAGES") == "true",
 	}, nil
+}
+
+func ParseCLI() (CLIConfig, error) {
+	baseURL := apiBaseURL()
+	flagSet := flag.NewFlagSet("monitor", flag.ContinueOnError)
+	guiMode := flagSet.Bool("gui", false, "run in gui mode")
+	backgroundWorker := flagSet.Bool("background-worker", false, "run a background worker (windows only)")
+	storageDir := flagSet.String("dir", "", "store calculated signatures in this directory (default ~/.affiro)")
+	showHelp := flagSet.Bool("help", false, "print help text and exit")
+	if err := flagSet.Parse(os.Args[1:]); err != nil {
+		fmt.Println(helpText)
+		return CLIConfig{}, fmt.Errorf("parsing the command line: %w", err)
+	}
+	return handleCommand(os.Args[1:], flags{
+		showHelp:         *showHelp,
+		storageDir:       *storageDir,
+		backgroundWorker: *backgroundWorker,
+		guiMode:          *guiMode,
+		baseURL:          baseURL,
+	})
 }

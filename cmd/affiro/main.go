@@ -59,7 +59,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := internal.ParseFlags()
+	cfg, err := internal.ParseCLI()
 	if err != nil {
 		return fmt.Errorf("failed to parse input arguments: %w", err)
 	}
